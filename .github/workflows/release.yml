@@ -62,9 +62,11 @@ jobs:
             ""|true) echo "docker_enabled=true" >> "$GITHUB_OUTPUT" ;;
             *) echo "ARTEX_PUBLISH_DOCKER 只接受 true 或 false" >&2; exit 1 ;;
           esac
-          echo "image=$image" >> "$GITHUB_OUTPUT"
-          echo "registry=$registry" >> "$GITHUB_OUTPUT"
-          echo "tag=$RELEASE_TAG" >> "$GITHUB_OUTPUT"
+          {
+            echo "image=$image"
+            echo "registry=$registry"
+            echo "tag=$RELEASE_TAG"
+          } >> "$GITHUB_OUTPUT"
       - name: Pin release commit
         id: commit
         run: echo "sha=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
@@ -179,7 +181,7 @@ jobs:
           for target in linux-amd64 linux-arm64 darwin-amd64 darwin-arm64 windows-amd64; do
             test -s "artex-${version}-${target}.zip"
           done
-          sha256sum *.zip > SHA256SUMS
+          sha256sum -- *.zip > SHA256SUMS
           sha256sum --check SHA256SUMS
       - name: Require the pinned, unpublished release
         env:

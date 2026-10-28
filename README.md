@@ -208,7 +208,7 @@ ARTEX_TARGETS=linux/amd64,windows/amd64 ./build.sh --release
 
 日常流程为 **推送 main → 等待 CI 全绿 → 手动运行 release**。推送代码和创建标签都不会自动构建或发布 Docker 镜像。
 
-1. 推送提交至 `main`，打开 [Actions → CI](https://github.com/jishengkele/naxia/actions/workflows/ci.yml)。CI 执行 Go vet、全部 Go 测试（每个包使用独立 PostgreSQL 数据库）、前端类型检查、前端回归测试与静态构建，以及版本分配和发布保护测试、工作流校验。数据库连接失败导致的测试跳过也会使 CI 失败。
+1. 推送提交至 `main`，打开 [Actions → CI](https://github.com/jishengkele/naxia/actions/workflows/ci.yml)。CI 执行 Go vet、全部 Go 测试（每个包使用独立 PostgreSQL 数据库）、前端类型检查、前端回归测试与静态构建，以及版本分配和发布保护测试、工作流校验。数据库连接失败导致的测试跳过也会使 CI 失败。服务端测试以目标 Docker/root 部署相同的 root 权限运行，验证 Linux 归档所需的 `/proc` 后台写入检查，不忽略权限错误。
 2. 该提交的 CI 全部通过后，打开 [Actions → release](https://github.com/jishengkele/naxia/actions/workflows/release.yml)，点击 **Run workflow**，分支选择 **main**。不需要输入版本或手工创建标签。流程要求所选提交仍为最新 main，并且同一提交最新一轮 CI 已成功；条件不满足时停止，不分配版本。
 3. 流程自动分配下一个版本并固定该提交，导出前端、构建五个平台的 ZIP 与 `SHA256SUMS`，构建和验证 Docker 镜像，最后公开 GitHub Release。镜像地址为 `ghcr.io/jishengkele/naxia:v1.0.0` 等正式标签，并更新 `latest`。
 
