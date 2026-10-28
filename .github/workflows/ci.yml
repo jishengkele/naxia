@@ -34,7 +34,7 @@ jobs:
       PGPORT: "5432"
       PGUSER: naxia_ci
       PGPASSWORD: ci-only-password
-      ARTEX_CONFIG: ${{ runner.temp }}/naxia-no-runtime-config.json
+      ARTEX_CONFIG: /tmp/naxia-ci-no-runtime-config.json
       NEXT_TELEMETRY_DISABLED: "1"
     steps:
       - uses: actions/checkout@v4
