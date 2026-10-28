@@ -1,0 +1,102 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  backend:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 35
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: naxia_ci
+          POSTGRES_PASSWORD: ci-only-password
+          POSTGRES_DB: postgres
+        ports: ["5432:5432"]
+        options: >-
+          --health-cmd "pg_isready -U naxia_ci -d postgres"
+          --health-interval 5s --health-timeout 3s --health-retries 15
+    env:
+      PGHOST: 127.0.0.1
+      PGPORT: "5432"
+      PGUSER: naxia_ci
+      PGPASSWORD: ci-only-password
+      ARTEX_CONFIG: ${{ runner.temp }}/naxia-no-runtime-config.json
+      NEXT_TELEMETRY_DISABLED: "1"
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache: true
+      - name: Check required local test tools
+        run: |
+          python3 --version
+          sed --version
+          psql --version
+          pg_isready
+      - name: Go vet
+        run: go vet ./...
+      - name: Full Go suite with a separate PostgreSQL database per package
+        run: bash .github/scripts/ci-go.sh
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: ci-go-results
+          path: .ci-logs/
+          retention-days: 7
+
+  frontend:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    defaults:
+      run:
+        working-directory: web
+    env:
+      HUSKY: "0"
+      NEXT_TELEMETRY_DISABLED: "1"
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: web/package-lock.json
+      - run: npm ci
+      - run: npx tsc --noEmit
+      - name: All frontend regression tests
+        run: |
+          mapfile -d '' test_files < <(find src -type f \( -name '*.test.mjs' -o -name '*.test.cjs' \) -print0)
+          test "${#test_files[@]}" -gt 0
+          node --test "${test_files[@]}"
+      - run: npm run build:static
+
+  workflows:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache: true
+      - name: Version allocation and CI gate regression tests
+        run: node --test .github/scripts/*.test.cjs
+      - name: Validate workflow syntax and shell snippets
+        run: go run github.com/rhysd/actionlint/cmd/actionlint@v1.7.7 -color

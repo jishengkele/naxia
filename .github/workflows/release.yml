@@ -1,24 +1,20 @@
 name: release
 on:
   workflow_dispatch:
-    inputs:
-      tag:
-        description: "已存在的正式版本标签，例如 v0.3.15"
-        required: true
-        type: string
-  push:
-    tags: ["v*"]
 
 permissions:
   contents: read
 
 concurrency:
-  group: release-${{ inputs.tag || github.ref_name }}
+  group: naxia-release-${{ github.repository }}
   cancel-in-progress: false
 
 jobs:
   prepare:
     runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      actions: read
     outputs:
       tag: ${{ steps.version.outputs.tag }}
       commit: ${{ steps.commit.outputs.sha }}
@@ -26,16 +22,27 @@ jobs:
       image: ${{ steps.version.outputs.image }}
       registry: ${{ steps.version.outputs.registry }}
     steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.sha }}
+          fetch-depth: 0
+      - name: Require successful CI and reserve the next version
+        id: reserve
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const { reserveRelease } = require('./.github/scripts/release-plan.cjs');
+            await reserveRelease({ github, context, core });
       - name: Validate release version
         id: version
         env:
-          RELEASE_TAG: ${{ inputs.tag || github.ref_name }}
+          RELEASE_TAG: ${{ steps.reserve.outputs.tag }}
           ARTEX_DOCKER_IMAGE: ${{ vars.ARTEX_DOCKER_IMAGE }}
           ARTEX_PUBLISH_DOCKER: ${{ vars.ARTEX_PUBLISH_DOCKER }}
           SOURCE_REPOSITORY: ${{ github.repository }}
         run: |
           if [[ ! "$RELEASE_TAG" =~ ^v(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$ ]]; then
-            echo "正式版本必须是 v主版本.次版本.修订号，例如 v0.3.15" >&2
+            echo "正式版本必须是 v主版本.次版本.修订号，例如 v1.0.0" >&2
             exit 1
           fi
           image="${ARTEX_DOCKER_IMAGE:-ghcr.io/${SOURCE_REPOSITORY,,}}"
@@ -58,9 +65,6 @@ jobs:
           echo "image=$image" >> "$GITHUB_OUTPUT"
           echo "registry=$registry" >> "$GITHUB_OUTPUT"
           echo "tag=$RELEASE_TAG" >> "$GITHUB_OUTPUT"
-      - uses: actions/checkout@v4
-        with:
-          ref: refs/tags/${{ steps.version.outputs.tag }}
       - name: Pin release commit
         id: commit
         run: echo "sha=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
@@ -84,6 +88,7 @@ jobs:
         working-directory: web
       - uses: actions/upload-artifact@v4
         with:
+          overwrite: true
           name: web-dist
           path: web/out
 
@@ -130,12 +135,14 @@ jobs:
         run: dist/artex-linux-amd64/artex -h
       - uses: actions/upload-artifact@v4
         with:
+          overwrite: true
           name: pkg-${{ matrix.goos }}-${{ matrix.goarch }}
           path: "dist/*.zip"
       # Linux 生二进制单独上传，供 docker job 复用（免在镜像里重编前端+Go）
       - if: matrix.goos == 'linux'
         uses: actions/upload-artifact@v4
         with:
+          overwrite: true
           name: bin-linux-${{ matrix.goarch }}
           path: dist/artex-linux-${{ matrix.goarch }}/artex
 
@@ -157,6 +164,9 @@ jobs:
       GH_REPO: ${{ github.repository }}
       RELEASE_TAG: ${{ needs.prepare.outputs.tag }}
     steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ needs.prepare.outputs.commit }}
       - uses: actions/download-artifact@v4
         with:
           pattern: pkg-*
@@ -171,25 +181,10 @@ jobs:
           done
           sha256sum *.zip > SHA256SUMS
           sha256sum --check SHA256SUMS
-      - name: Replace release only when the tag moved to a new commit
+      - name: Require the pinned, unpublished release
         env:
           RELEASE_COMMIT: ${{ needs.prepare.outputs.commit }}
-        run: |
-          if gh release view "$RELEASE_TAG" --json isDraft,targetCommitish > /tmp/artex-release.json 2>/tmp/artex-release.err; then
-            draft=$(jq -r .isDraft /tmp/artex-release.json)
-            target=$(jq -r '.targetCommitish // empty' /tmp/artex-release.json)
-            if [[ "$draft" != "true" ]]; then
-              if [[ "$target" == "$RELEASE_COMMIT" ]]; then
-                echo "该版本已发布且已指向当前提交，拒绝重复发布" >&2
-                exit 1
-              fi
-              echo "标签已移动到新提交，删除旧 Release 后重新创建 $RELEASE_TAG"
-              gh release delete "$RELEASE_TAG" --yes
-            fi
-          elif ! grep -qi 'release not found\|HTTP 404' /tmp/artex-release.err; then
-            cat /tmp/artex-release.err >&2
-            exit 1
-          fi
+        run: bash .github/scripts/check-release.sh
       - uses: softprops/action-gh-release@v2
         with:
           tag_name: ${{ needs.prepare.outputs.tag }}
@@ -265,6 +260,13 @@ jobs:
         with:
           username: ${{ secrets.DOCKERHUB_USERNAME }}
           password: ${{ secrets.DOCKERHUB_TOKEN }}
+      - name: Require the pinned, unpublished release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          RELEASE_TAG: ${{ needs.prepare.outputs.tag }}
+          RELEASE_COMMIT: ${{ needs.prepare.outputs.commit }}
+        run: bash .github/scripts/check-release.sh
       - name: Build image for native smoke test
         uses: docker/build-push-action@v6
         with:
@@ -310,6 +312,9 @@ jobs:
       packages: write
     runs-on: ubuntu-24.04
     steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ needs.prepare.outputs.commit }}
       - uses: docker/setup-buildx-action@v3
       - uses: docker/login-action@v3
         if: needs.prepare.outputs.registry == 'ghcr.io'
@@ -322,6 +327,13 @@ jobs:
         with:
           username: ${{ secrets.DOCKERHUB_USERNAME }}
           password: ${{ secrets.DOCKERHUB_TOKEN }}
+      - name: Require the pinned, unpublished release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          RELEASE_TAG: ${{ needs.prepare.outputs.tag }}
+          RELEASE_COMMIT: ${{ needs.prepare.outputs.commit }}
+        run: bash .github/scripts/check-release.sh
       - name: Publish multi-platform image
         env:
           IMAGE: ${{ needs.prepare.outputs.image }}

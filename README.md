@@ -11,6 +11,8 @@ AI 自主渗透测试系统（Go 后端 + Next.js 前端）
 
 本仓库为独立维护的 [jishengkele/naxia](https://github.com/jishengkele/naxia)，基于 [RuoJi6/ARTEX](https://github.com/RuoJi6/ARTEX) 与 [Autumn-27/ARTEX](https://github.com/Autumn-27/ARTEX)，保留原有来源说明和 AGPL-3.0 许可证。程序发布包及页面在线更新使用本仓库 Releases；程序名称和发布包前缀继续使用 `artex`。本项目容器镜像发布到 GitHub Container Registry：`ghcr.io/jishengkele/naxia`。
 
+本仓库正式版本从 **v1.0.0** 开始。推送代码自动运行 CI，通过后由维护者手动构建发布；发布流程自动递增版本，并将同一版本写入程序、Docker 镜像标签和 GitHub Release。详见[维护者发布流程](#维护者通过-github-actions-发布在线更新)。
+
 ---
 
 ## 截图预览
@@ -88,7 +90,7 @@ Demo 只运行 `web/` 前端，构建时启用 `NEXT_PUBLIC_MOCK=1`，不需要 
 
 ### 首次部署与重试
 
-将配置合并到默认分支后，打开 **Actions → deploy-demo → Run workflow**，分支选 `main`，tag 留空或填写当前最新正式版（例如 `v0.3.21`）。工作流只接受已发布且包含五个平台程序包和校验文件的最新正式版，也能部署尚未包含此工作流的历史正式版。无需重新发 Release 或移动已有标签。
+将配置合并到默认分支后，打开 **Actions → deploy-demo → Run workflow**，分支选 `main`，tag 留空或填写当前最新正式版（例如 `v1.0.0`）。工作流只接受已发布且包含五个平台程序包和校验文件的最新正式版，也能部署尚未包含此工作流的历史正式版。无需重新发 Release 或移动已有标签。
 
 工作流会将这个专用 Demo 项目的框架设为 Next.js、Node 设为 22.x、根目录设为空、安装命令设为 `npm ci`、构建命令设为 `npm run build`，并确保 Production 环境的 `NEXT_PUBLIC_MOCK=1`，随后绑定 `DEMO_URL` 指定的域名。请使用独立项目；后续部署会继续维护这些配置。
 
@@ -131,7 +133,7 @@ docker compose up -d          # 拉取 ghcr.io/jishengkele/naxia 镜像 + postgr
 
 镜像已含常用工具（ripgrep/curl/vim/npm/nmap…）；`./skills` 与 `./data` 以绑定挂载持久化。
 
-`.env` 中默认 `ARTEX_IMAGE=ghcr.io/jishengkele/naxia`，`ARTEX_TAG=latest` 使用最新镜像，也可固定为已发布的正式版本标签，例如 `ghcr.io/jishengkele/naxia:v0.3.17`。工作流构建 `linux/amd64` 和 `linux/arm64` 镜像，Docker 会自动选择与宿主机匹配的架构。初次部署请修改 `POSTGRES_PASSWORD`。
+`.env` 中默认 `ARTEX_IMAGE=ghcr.io/jishengkele/naxia`，`ARTEX_TAG=latest` 使用最新镜像，也可固定为已发布的正式版本标签，例如 `ghcr.io/jishengkele/naxia:v1.0.0`。工作流构建 `linux/amd64` 和 `linux/arm64` 镜像，Docker 会自动选择与宿主机匹配的架构。初次部署请修改 `POSTGRES_PASSWORD`。
 
 镜像须先由本仓库正式发布工作流构建并推送，修改地址本身不会生成镜像。GHCR 首次创建的包默认私有；维护者需在 GitHub 账号的 Packages → naxia → Package settings 中将可见性设为 Public，之后服务器可以匿名拉取。私有镜像则需先使用有 `read:packages` 权限的凭据登录 `ghcr.io`。已有 `.env` 不会被脚本覆盖，迁移时需自行把其中的旧 `ARTEX_IMAGE` 改为新地址。
 
@@ -170,7 +172,7 @@ CGO_ENABLED=0 go build -tags embedui -o artex ./cmd/artex
 
 ```bash
 ./build.sh --release
-# 产物：dist/artex-0.3.3-*.zip
+# 产物：dist/artex-1.0.0-*.zip
 ```
 
 UPX 自解压二进制可能与部分 Linux 内核、虚拟化环境或安全策略不兼容，因此默认不启用。可用 `ARTEX_TARGETS` 自定义目标；确认目标运行环境兼容时，可显式传入 `--upx` 进一步缩小二进制：
@@ -204,21 +206,36 @@ ARTEX_TARGETS=linux/amd64,windows/amd64 ./build.sh --release
 
 ### 维护者：通过 GitHub Actions 发布在线更新
 
-发布工作流为 `.github/workflows/release.yml`。推送正式标签会触发构建，也可在 Actions → release → Run workflow 中输入已存在的标签重新执行失败的发布。标签必须是 `v主版本.次版本.修订号`，例如下例的 `v0.3.17`；后续版本必须高于用户正在运行的版本。
+日常流程为 **推送 main → 等待 CI 全绿 → 手动运行 release**。推送代码和创建标签都不会自动构建或发布 Docker 镜像。
+
+1. 推送提交至 `main`，打开 [Actions → CI](https://github.com/jishengkele/naxia/actions/workflows/ci.yml)。CI 执行 Go vet、全部 Go 测试（每个包使用独立 PostgreSQL 数据库）、前端类型检查、前端回归测试与静态构建，以及版本分配和发布保护测试、工作流校验。数据库连接失败导致的测试跳过也会使 CI 失败。
+2. 该提交的 CI 全部通过后，打开 [Actions → release](https://github.com/jishengkele/naxia/actions/workflows/release.yml)，点击 **Run workflow**，分支选择 **main**。不需要输入版本或手工创建标签。流程要求所选提交仍为最新 main，并且同一提交最新一轮 CI 已成功；条件不满足时停止，不分配版本。
+3. 流程自动分配下一个版本并固定该提交，导出前端、构建五个平台的 ZIP 与 `SHA256SUMS`，构建和验证 Docker 镜像，最后公开 GitHub Release。镜像地址为 `ghcr.io/jishengkele/naxia:v1.0.0` 等正式标签，并更新 `latest`。
+
+自动版本规则：首次 **v1.0.0**，下一次 **v1.0.1**；修订号和次版本使用 0–99，`v1.0.99 → v1.1.0`，`v1.99.99 → v2.0.0`。以仓库中已分配的正式版本标签为准，上游 `v0.x` 和预发布标签不参与计算。推送源码本身不会增加版本。程序界面显示的版本由构建时注入的发布标签决定，无需为每次构建另改源码中的版本。
+
+发布串行执行，分配标签时不覆盖已有标签。**版本分配后即被占用**：后续构建失败也保留标签，因此可能跳号。使用 **Re-run failed jobs** 续跑同一版本；重新点击 **Run workflow** 或 **Re-run all jobs** 会重新分配下一个版本。已经公开的版本拒绝原地覆盖，请新发起发布生成更高版本；不要删除或移动旧标签来复用版本。并发提交多个发布请求时，GitHub 可能替换尚在排队的请求，建议等当前发布结束后再发起下一次。
+
+工作流使用 Node.js 22 和 `go.mod` 指定的 Go 版本。Release 目标自动使用工作流所在的仓库 `${{ github.repository }}`，镜像默认使用 `ghcr.io/` 加小写仓库全名。GHCR 默认使用自带的 `GITHUB_TOKEN`，仅镜像 job 获得 `packages: write`；无需 Docker Hub 凭据。AMD64 和 ARM64 镜像在各自原生 runner 上连接临时 PostgreSQL 验证启动、版本和内嵌前端，两种架构均通过后才发布正式镜像和 Release。账号或组织若限制包发布，需先允许该仓库工作流发布对应包。
+
+保留原有可选配置：Actions 变量 `ARTEX_PUBLISH_DOCKER=false` 只发布程序包；`ARTEX_DOCKER_IMAGE` 可覆盖为 `ghcr.io/所有者/镜像名` 或 `DockerHub用户名/镜像名`（均不带标签）。显式选择 Docker Hub 时使用 Secrets `DOCKERHUB_USERNAME`、`DOCKERHUB_TOKEN`。覆盖目标后，部署环境的 `ARTEX_IMAGE` 也应保持一致。Demo 仅在配置 `VERCEL_PROJECT_ID`、`VERCEL_ORG_ID` 和 `VERCEL_TOKEN` 后部署，未配置时跳过。凭据不写入源码或镜像。
+
+### 本地有多个 GitHub 账号时指定推送账号
+
+在本仓库目录执行以下设置，均为本仓库的本地 Git 配置，不影响其他项目或全局账号：
 
 ```bash
+git config --local user.name jishengkele
+git config --local user.email 279956662+jishengkele@users.noreply.github.com
+git config --local user.useConfigOnly true
+git config --local credential.https://github.com.username jishengkele
+git config --local remote.pushDefault origin
+git config --local push.default simple
+git remote set-url --push origin https://jishengkele@github.com/jishengkele/naxia.git
 git push origin main
-git tag v0.3.17
-git push origin v0.3.17
 ```
 
-工作流固定标签对应的提交，用 Node.js 22 导出前端，按照 `go.mod` 指定的 Go 版本编译内嵌前端的五个平台程序，并生成 ZIP 与 `SHA256SUMS`。Release 目标自动使用工作流所在的仓库 `${{ github.repository }}`，镜像默认使用 `ghcr.io/` 加小写仓库全名。在 `jishengkele/naxia` 中运行会同时发布本仓库程序包和 `ghcr.io/jishengkele/naxia` 镜像。
-
-GHCR 默认使用工作流自带的 `GITHUB_TOKEN` 登录，只有镜像 job 获得 `packages: write` 权限，无需配置 Docker Hub 用户名或 Token。AMD64 和 ARM64 镜像分别在原生 runner 上连接临时 PostgreSQL 验证启动、版本和内嵌前端，两种架构通过后发布版本标签与 `latest`，再公开 Release；镜像构建或推送失败会阻止正式发布。若账号或组织策略限制包发布，需先允许该仓库工作流发布对应包。
-
-可选 Actions 变量：`ARTEX_PUBLISH_DOCKER=false` 只发布程序包；`ARTEX_DOCKER_IMAGE` 可覆盖为 `ghcr.io/所有者/镜像名` 或 `DockerHub用户名/镜像名`（均不带标签）。显式选择 Docker Hub 时仍使用原有 Secrets `DOCKERHUB_USERNAME`、`DOCKERHUB_TOKEN`。覆盖发布目标后，部署环境中的 `ARTEX_IMAGE` 也应设置为相同地址。
-
-程序包通过 GitHub 自带 `GITHUB_TOKEN` 上传，镜像凭据仅供工作流登录，不写入源码或镜像。Demo 部署仅在配置 `VERCEL_PROJECT_ID`、`VERCEL_ORG_ID` 后启用，并需提供 `VERCEL_TOKEN`；未配置时跳过。已有公开版本应发布更高的新标签，供在线更新识别。
+`user.name` 和 `user.email` 指定提交作者；实际推送认证由推送 URL 中的账号和 Git Credential Manager 保存的对应凭据决定。首次使用时需登录有本仓库写权限的 `jishengkele`，不能只修改作者信息来获得权限。令牌保存在凭据管理器，不要写进远程 URL 或提交至仓库。
 
 ### 已有 Docker 部署迁移到本仓库程序或自有镜像
 
@@ -247,10 +264,10 @@ docker compose logs --tail=50 artex
 ```bash
 # 在下载目录运行；先按 SHA256SUMS 核对下载的 ZIP，再解压。
 sha256sum --ignore-missing --check SHA256SUMS
-unzip artex-0.3.17-linux-arm64.zip
+unzip artex-1.0.0-linux-arm64.zip
 sudo docker stop artex-artex-1
 sudo docker cp artex-artex-1:/app/artex ./artex-before-migration
-sudo docker cp ./artex-0.3.17-linux-arm64/artex artex-artex-1:/app/artex
+sudo docker cp ./artex-1.0.0-linux-arm64/artex artex-artex-1:/app/artex
 sudo docker start artex-artex-1
 curl --fail http://127.0.0.1:8787/api/health
 ```
@@ -274,7 +291,7 @@ cd naxia
 ```bash
 cd naxia
 git pull                       # 更新 compose / 脚本（可选）
-# 指定版本：在 .env 设 ARTEX_TAG=v0.3.17；不设则用 latest
+# 指定版本：在 .env 设 ARTEX_TAG=v1.0.0；不设则用 latest
 docker compose pull artex
 docker compose up -d artex     # 换新镜像重启 → 自动迁移 schema
 docker image prune -f          # 清理旧镜像（可选）

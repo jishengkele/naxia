@@ -19,6 +19,7 @@ web/public/demo-version.json
 *.local
 
 # development tools
+.ci-logs/
 .playwright-mcp/
 .playwright-cli/
 .idea/

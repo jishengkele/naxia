@@ -158,10 +158,19 @@ func TestInterceptApprovalFilters(t *testing.T) {
 	if err != nil || total != 1 || len(rows) != 1 || rows[0].ID != searchID {
 		t.Fatalf("id search total=%d rows=%d err=%v", total, len(rows), err)
 	}
+	if _, err := d.Exec(`UPDATE intercept_pending SET created_at='2099-01-01T12:00:00Z' WHERE id=$1`, searchID); err != nil {
+		t.Fatal(err)
+	}
 	rows, total, err = d.ListTaskInterceptsPage(scope, 1, 20, InterceptApprovalFilter{
 		Search: "example.test", CreatedFrom: "2099-01-01", CreatedTo: "2099-01-01",
 	})
 	if err != nil || total != 1 || len(rows) != 1 || rows[0].ID != searchID {
 		t.Fatalf("date search total=%d rows=%d err=%v", total, len(rows), err)
+	}
+	_, total, err = d.ListTaskInterceptsPage(scope, 1, 20, InterceptApprovalFilter{
+		Search: "example.test", CreatedFrom: "2099-01-02", CreatedTo: "2099-01-02",
+	})
+	if err != nil || total != 0 {
+		t.Fatalf("out-of-range date search total=%d err=%v", total, err)
 	}
 }
