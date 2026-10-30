@@ -139,6 +139,20 @@ class TransactionTests(unittest.TestCase):
         self.assertTrue(self.w.snapshot()["recovery_required"])
         with self.assertRaises(ValueError): self.w.submit("v1.0.4")
 
+    def test_corrupt_backup_is_rejected_before_existing_files_are_deleted(self):
+        self.w.fail_new = True
+        wait = self.w.wait_healthy
+        def corrupt(tag, *args):
+            if tag == "v1.0.3":
+                backup = next(self.w.state.glob("backup-*/0/payload"))
+                backup.write_bytes(b"corrupt backup")
+            return wait(tag, *args)
+        self.w.wait_healthy = corrupt
+        self.upgrade()
+        self.assertFalse(self.w.snapshot()["ready"])
+        self.assertEqual((self.w.data / "payload").read_bytes(), b"new runtime changed data")
+        self.assertTrue(self.w.snapshot()["recovery_required"])
+
     def test_space_failure_does_not_stop_application(self):
         self.w.no_space = True
         self.upgrade()

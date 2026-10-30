@@ -41,6 +41,11 @@ def atomic_json(path, value):
         out.flush()
         os.fsync(out.fileno())
     os.replace(temp, path)
+    fd = os.open(path.parent, os.O_RDONLY | os.O_DIRECTORY)
+    try:
+        os.fsync(fd)
+    finally:
+        os.close(fd)
 
 
 class Worker:
@@ -240,6 +245,22 @@ print(json.dumps({'version':h['version'],'initialized':a['initialized']}))
                 raise RuntimeError("挂载恢复完整性校验失败")
 
     @staticmethod
+    def file_hash(path):
+        digest = hashlib.sha256()
+        with open(path, "rb") as source:
+            for block in iter(lambda: source.read(1024 * 1024), b""):
+                digest.update(block)
+        return digest.hexdigest()
+
+    def verify_backup(self, mounts, root):
+        manifest = json.loads((root / "complete.json").read_text())
+        if self.file_hash(root / "database.dump") != manifest["database_sha256"]:
+            raise RuntimeError("数据库恢复点校验失败，未覆盖现有数据")
+        for i, _ in enumerate(mounts):
+            if self.inventory(root / str(i)) != manifest["mounts"][str(i)]:
+                raise RuntimeError("文件恢复点校验失败，未覆盖现有数据")
+
+    @staticmethod
     def validate_database(cfg):
         app = cfg["services"]["artex"].get("environment", {})
         pg = cfg["services"]["postgres"].get("environment", {})
@@ -281,6 +302,7 @@ print(json.dumps({'version':h['version'],'initialized':a['initialized']}))
         old_env = None
         stopped = False
         backed_up = False
+        switched = False
         old = None
         try:
             old = self.container()
@@ -342,7 +364,9 @@ print(json.dumps({'version':h['version'],'initialized':a['initialized']}))
             self.backup_mounts(old_mounts, backup)
             backed_up = True
             os.sync()
-            atomic_json(backup / "complete.json", {"complete": True})
+            atomic_json(backup / "complete.json", {"complete": True,
+                "database_sha256": self.file_hash(backup / "database.dump"),
+                "mounts": {str(i): self.inventory(backup / str(i)) for i, _ in enumerate(old_mounts)}})
             self.write_env(self.pin_env(old_env, self.image, tag, digest))
             new_cfg = json.loads(self.compose("config", "--format", "json"))
             if new_cfg["services"]["artex"]["image"] != target + "@" + digest:
@@ -352,6 +376,7 @@ print(json.dumps({'version':h['version'],'initialized':a['initialized']}))
             if new_cfg != cfg:
                 raise RuntimeError("镜像更新意外改变其他 Compose 配置")
             self.emit("staged", "正在重建应用容器并验收新版镜像")
+            switched = True
             self.compose("up", "-d", "--no-deps", "--force-recreate", "artex")
             new = self.wait_healthy(tag, before, old_mounts, image["Id"])
             if hashlib.sha256(key_path.read_bytes()).hexdigest() != key_hash:
@@ -385,7 +410,8 @@ print(json.dumps({'version':h['version'],'initialized':a['initialized']}))
                     self.assert_stopped()
                     if old_env is not None:
                         self.write_env(old_env)
-                    if backed_up:
+                    if backed_up and switched:
+                        self.verify_backup(old_mounts, backup)
                         # Remove the new app before replacing bind-mount sources.
                         self.compose("rm", "-f", "artex")
                         self.restore_mounts(old_mounts, backup)
@@ -411,6 +437,7 @@ print(json.dumps({'version':h['version'],'initialized':a['initialized']}))
         if root.parent != self.state.resolve() or not root.name.startswith("backup-") or not (root / "complete.json").is_file():
             raise RuntimeError("恢复点不在本服务目录或备份未完整完成")
         record = json.loads((root / "recovery.json").read_text())
+        self.verify_backup(record["mounts"], root)
         self.compose("stop", "-t", "60", "artex")
         ids = self.compose("ps", "-a", "-q", "artex").decode().split()
         if ids:
