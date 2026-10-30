@@ -139,7 +139,7 @@ func (s *Server) archivePreparedTask(job *db.TaskArchive) (runErr error) {
 			return err
 		}
 	}
-	if err = archiveCheckWriters(archiveSourceRoots(plan.Sources)); err != nil {
+	if err = s.checkTaskArchiveQuiescent(job.TaskID, archiveSourceRoots(plan.Sources)); err != nil {
 		return err
 	}
 	_ = s.m.pg.UpdateTaskArchiveProgress(job.ID, "verify_snapshot", 60)
@@ -186,7 +186,7 @@ func (s *Server) archivePreparedTask(job *db.TaskArchive) (runErr error) {
 			return err
 		}
 	}
-	if err = archiveCheckWriters(stagedRoots); err != nil {
+	if err = s.checkTaskArchiveQuiescent(job.TaskID, stagedRoots); err != nil {
 		return err
 	}
 	var size int64

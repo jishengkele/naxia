@@ -18,9 +18,9 @@ var ProcessScope func(RunInfo, string) ([]string, error)
 // bypassing the harness's inner permission and hook path. Wrap the target tools
 // so the real name/input retains its policy even when only its schema is deferred.
 // Direct SDK calls already pass the harness checks and must not be reviewed twice.
-func newGuardedSession(opts agentcore.Options, contexts ...context.Context) *agentcore.Session {
-	if ProcessScope != nil && len(contexts) > 0 {
-		ri := RunInfoFrom(contexts[0])
+func newGuardedSession(ctx context.Context, opts agentcore.Options) *agentcore.Session {
+	if ProcessScope != nil {
+		ri := RunInfoFrom(ctx)
 		if ri.TaskID > 0 {
 			env, err := ProcessScope(ri, opts.SessionID)
 			opts.BashEnv = append(append([]string(nil), opts.BashEnv...), env...)

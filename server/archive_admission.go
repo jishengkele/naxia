@@ -539,7 +539,7 @@ func (s *Server) prepareTaskArchive(ctx context.Context, id int64) (item *db.Tas
 	if err = checkArchiveCapacity(plan.Space); err != nil {
 		return nil, err
 	}
-	if err = archiveCheckWriters(archiveSourceRoots(plan.Sources)); err != nil {
+	if err = s.checkTaskArchiveQuiescent(id, archiveSourceRoots(plan.Sources)); err != nil {
 		return nil, err
 	}
 	item, err = s.m.pg.QueueTaskArchive(id, &db.ArchivePreparation{EstimatedBytes: int64(plan.Space.EstimatedBytes), RequiredBytes: int64(plan.Space.RequiredBytes), AvailableBytes: int64(plan.Space.AvailableBytes), SnapshotAt: plan.SnapshotAt})
@@ -673,7 +673,7 @@ func (s *Server) prepareTaskArchive(ctx context.Context, id int64) (item *db.Tas
 	if err = writeArchiveFile(filepath.Join(prepared, "archive.log"), []byte(fmt.Sprintf("snapshot_at=%s task_id=%d phase=verified_snapshot sources=%d\n", plan.SnapshotAt.Format(time.RFC3339Nano), id, len(plan.Sources)))); err != nil {
 		return nil, err
 	}
-	if err = archiveCheckWriters(archiveSourceRoots(plan.Sources)); err != nil {
+	if err = s.checkTaskArchiveQuiescent(id, archiveSourceRoots(plan.Sources)); err != nil {
 		return nil, err
 	}
 	for _, source := range plan.Sources {

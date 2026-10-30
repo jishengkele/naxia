@@ -91,7 +91,7 @@ func (r *Registry) List(taskID int64) ([]Process, error) {
 		token, err := marker(pid)
 		// Inaccessible processes cannot be claimed. The independent writer scan
 		// will still fail closed if they touch any archive source.
-		if os.IsNotExist(err) || os.IsPermission(err) {
+		if os.IsNotExist(err) || os.IsPermission(err) || errors.Is(err, unix.ESRCH) {
 			continue
 		}
 		if err != nil {
@@ -168,6 +168,7 @@ func (r *Registry) Stop(ctx context.Context, taskID int64) error {
 	ctx, cancel := context.WithTimeout(ctx, 10*time.Second)
 	defer cancel()
 	sent := map[string]bool{}
+	quietPasses := 0
 	for {
 		if err := ctx.Err(); err != nil {
 			return fmt.Errorf("后台服务未正常退出，原数据保留（已停止的服务不会自动重启）: %w", err)
@@ -177,7 +178,12 @@ func (r *Registry) Stop(ctx context.Context, taskID int64) error {
 			return err
 		}
 		if len(processes) == 0 {
-			return nil
+			quietPasses++
+			if quietPasses >= 2 {
+				return nil
+			}
+		} else {
+			quietPasses = 0
 		}
 		for _, p := range processes {
 			key := fmt.Sprintf("%d:%d", p.PID, p.StartTicks)

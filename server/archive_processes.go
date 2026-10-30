@@ -45,6 +45,25 @@ func archiveCheckWriters(roots []string) error {
 	return nil
 }
 
+// Recheck ownership as well as open files: a late child may not have opened its
+// next output file yet. Never commit while a registered task service is alive.
+func (s *Server) checkTaskArchiveQuiescent(taskID int64, roots []string) error {
+	if s.processes != nil {
+		processes, err := s.processes.List(taskID)
+		if err != nil {
+			return err
+		}
+		if len(processes) > 0 {
+			var names []string
+			for _, p := range processes {
+				names = append(names, fmt.Sprintf("PID %d (%s)", p.PID, p.Name))
+			}
+			return &archiveServiceConflict{Err: fmt.Errorf("任务后台进程仍存活：%s", strings.Join(names, "；"))}
+		}
+	}
+	return archiveCheckWriters(roots)
+}
+
 func (s *Server) archiveProcessState(taskID int64, sources []archiveSource) ([]taskproc.Process, []archiveWriter, error) {
 	var processes []taskproc.Process
 	if s.processes != nil {
