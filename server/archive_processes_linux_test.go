@@ -168,3 +168,37 @@ func TestArchiveCapacityAndCopyFailuresKeepOriginalAfterServiceShutdown(t *testi
 		})
 	}
 }
+
+func TestArchiveRefusesLateOwnedProcessEvenWithoutOpenTaskFile(t *testing.T) {
+	s, task, id := directoryArchiveFixture(t)
+	s.processes = &taskproc.Registry{Root: filepath.Join(s.m.dir, ".process-scopes")}
+	job, err := s.prepareTaskArchive(t.Context(), id)
+	if err != nil {
+		t.Fatal(err)
+	}
+	// A late process has not opened its next task output yet. The independent
+	// ownership check must still prevent committing the already prepared copy.
+	env, err := s.processes.Register(id, 9, "late-worker")
+	if err != nil {
+		t.Fatal(err)
+	}
+	path := archiveServiceFixture(t, t.TempDir(), env)
+	if err := archiveCheckWriters([]string{filepath.Join(s.m.dir, "tasks", task.ID)}); err != nil {
+		t.Fatalf("fixture unexpectedly writing task: %v", err)
+	}
+	if _, err = s.m.pg.ClaimTaskArchiveJob(t.Context()); err != nil {
+		t.Fatal(err)
+	}
+	if err = s.archivePreparedTask(job); err == nil || !strings.Contains(err.Error(), "仍存活") {
+		t.Fatalf("late process was accepted: %v", err)
+	}
+	if raw, _ := os.ReadFile(path); string(raw) != "ready\n" {
+		t.Fatal("worker killed process after snapshot")
+	}
+	if _, err = os.Stat(filepath.Join(s.m.dir, "tasks", task.ID, "workspace", "binary.bin")); err != nil {
+		t.Fatal("original moved despite live service", err)
+	}
+	if s.engine.IsDeleting(task.ID) {
+		t.Fatal("failed worker retained barrier")
+	}
+}
