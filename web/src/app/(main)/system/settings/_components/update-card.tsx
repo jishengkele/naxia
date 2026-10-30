@@ -52,6 +52,7 @@ export function UpdateCard() {
   const [savingNetwork, setSavingNetwork] = React.useState(false);
   const [networkError, setNetworkError] = React.useState("");
   const streamRef = React.useRef<ReturnType<typeof openSSE> | null>(null);
+  const dockerActiveRef = React.useRef(false);
   const networkDirty = network?.proxy !== savedNetwork?.proxy;
 
   React.useEffect(() => {
@@ -107,9 +108,10 @@ export function UpdateCard() {
         try {
           const st = await api.dockerUpdateStatus();
           if (!active) return;
+          if (st.running) dockerActiveRef.current = true;
           setBusy(st.running);
           setProgress({ ...st, percent: -1 });
-          if (st.phase === "complete" && st.version?.replace(/^v/, "") !== info.current.replace(/^v/, "")) {
+          if (st.phase === "complete" && dockerActiveRef.current && st.version?.replace(/^v/, "") !== info.current.replace(/^v/, "")) {
             window.location.reload();
             return;
           }
@@ -224,7 +226,8 @@ export function UpdateCard() {
     api
       .applyUpdate()
       .then(() => {
-        if (info.mode !== "docker") openStream(from);
+        if (info.mode === "docker") dockerActiveRef.current = true;
+        else openStream(from);
       })
       .catch((e) => {
         setBusy(false);
