@@ -10,11 +10,30 @@ import (
 	actool "github.com/Autumn-27/norma/tool"
 )
 
+// ProcessScope is wired by the host. An ownership registration failure blocks
+// tool execution rather than silently starting an untracked task process.
+var ProcessScope func(RunInfo, string) ([]string, error)
+
 // norma's ExecuteExtraTool validates/unlocks a target and then calls it directly,
 // bypassing the harness's inner permission and hook path. Wrap the target tools
 // so the real name/input retains its policy even when only its schema is deferred.
 // Direct SDK calls already pass the harness checks and must not be reviewed twice.
-func newGuardedSession(opts agentcore.Options) *agentcore.Session {
+func newGuardedSession(opts agentcore.Options, contexts ...context.Context) *agentcore.Session {
+	if ProcessScope != nil && len(contexts) > 0 {
+		ri := RunInfoFrom(contexts[0])
+		if ri.TaskID > 0 {
+			env, err := ProcessScope(ri, opts.SessionID)
+			opts.BashEnv = append(append([]string(nil), opts.BashEnv...), env...)
+			if opts.Tools == nil {
+				opts.Tools = actool.DefaultTools()
+			}
+			tools := make([]actool.CoreTool, 0, len(opts.Tools))
+			for _, t := range opts.Tools {
+				tools = append(tools, processScopeTool{CoreTool: t, env: env, registrationErr: err})
+			}
+			opts.Tools = tools
+		}
+	}
 	if len(opts.DeferredTools) > 0 {
 		if opts.PermissionMode == "" {
 			opts.PermissionMode = permission.ModeDefault
@@ -33,6 +52,29 @@ func newGuardedSession(opts agentcore.Options) *agentcore.Session {
 		opts.Tools = tools
 	}
 	return agentcore.NewSession(opts)
+}
+
+type processScopeTool struct {
+	actool.CoreTool
+	env             []string
+	registrationErr error
+}
+
+func (t processScopeTool) AcceptsRawInput() bool {
+	raw, ok := t.CoreTool.(interface{ AcceptsRawInput() bool })
+	return ok && raw.AcceptsRawInput()
+}
+
+func (t processScopeTool) Call(ctx context.Context, input json.RawMessage, tc *actool.ToolContext) (actool.Result, error) {
+	if t.registrationErr != nil {
+		return actool.Errorf("无法登记任务后台进程归属，未执行工具: " + t.registrationErr.Error()), nil
+	}
+	copyContext := actool.ToolContext{}
+	if tc != nil {
+		copyContext = *tc
+	}
+	copyContext.Env = append(append([]string(nil), copyContext.Env...), t.env...)
+	return t.CoreTool.Call(ctx, input, &copyContext)
 }
 
 type delegatedApprovalTool struct {

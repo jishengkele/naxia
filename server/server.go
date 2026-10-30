@@ -25,6 +25,7 @@ import (
 	"github.com/Autumn-27/artex/llmpool"
 	"github.com/Autumn-27/artex/llmrec"
 	"github.com/Autumn-27/artex/report"
+	"github.com/Autumn-27/artex/taskproc"
 	"github.com/Autumn-27/artex/traffic"
 	"github.com/Autumn-27/norma/llm"
 	actool "github.com/Autumn-27/norma/tool"
@@ -126,6 +127,7 @@ type Server struct {
 	archivePrepareMu  sync.Mutex
 	archiveSpaceQuery func(string) (uint64, uint64, error)
 	archiveCopySource func(context.Context, archiveSource, string) error
+	processes         *taskproc.Registry
 	side              *sideQuestionState
 }
 
@@ -162,6 +164,10 @@ func New(ctx context.Context, m *Manager, skillDir string, dataDir string, keyDi
 		provByProfile:  map[int64]*provEntry{}, llmHealth: newLLMHealthRegistry(m.pg),
 		taskAgents: map[string]*taskAgentBundle{}, archiveWake: make(chan struct{}, 1)}
 	s.initSideQuestions()
+	s.processes = &taskproc.Registry{Root: filepath.Join(m.dir, ".process-scopes")}
+	agent.ProcessScope = func(ri agent.RunInfo, session string) ([]string, error) {
+		return s.processes.Register(ri.TaskID, ri.IntentID, session)
+	}
 	if m.pg != nil {
 		if err := s.basicAuth.load(m.pg); err != nil {
 			log.Fatalf("[auth] load HTTP Basic Auth: %v", err)

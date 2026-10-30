@@ -4,8 +4,10 @@ import (
 	"context"
 	"fmt"
 	"log"
+	"strings"
 	"time"
 
+	"github.com/Autumn-27/artex/agent"
 	"github.com/Autumn-27/artex/db"
 	"github.com/Autumn-27/artex/mcphttp"
 	"github.com/Autumn-27/norma/mcp"
@@ -27,7 +29,23 @@ func connectMCP(ctx context.Context, m *db.MCPServer) (mcpClient, error) {
 		if m.Command == "" {
 			return nil, fmt.Errorf("stdio 传输缺少命令")
 		}
-		return mcp.NewStdioClient(ctx, m.Name, m.Command, jsonStrMap(m.Env), jsonStrSlice(m.Args)...)
+		env := jsonStrMap(m.Env)
+		ri := agent.RunInfoFrom(ctx)
+		if ri.TaskID > 0 && agent.ProcessScope != nil {
+			owned, err := agent.ProcessScope(ri, "mcp:"+m.Name)
+			if err != nil {
+				return nil, fmt.Errorf("登记 MCP 进程归属: %w", err)
+			}
+			if env == nil {
+				env = map[string]string{}
+			}
+			for _, entry := range owned {
+				if k, v, ok := strings.Cut(entry, "="); ok {
+					env[k] = v
+				}
+			}
+		}
+		return mcp.NewStdioClient(ctx, m.Name, m.Command, env, jsonStrSlice(m.Args)...)
 	case "http":
 		if m.URL == "" {
 			return nil, fmt.Errorf("http 传输缺少 URL")

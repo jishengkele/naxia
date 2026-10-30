@@ -719,6 +719,16 @@ func topoTaskIDs(ids []string, sources map[string][]string, restore bool) []stri
 }
 
 func writeArchiveError(w http.ResponseWriter, err error) {
+	var writers *archiveWriterConflict
+	if errors.As(err, &writers) {
+		writeJSON(w, http.StatusConflict, map[string]any{"error": writers.Error(), "code": "archive_writers", "writers": writers.Writers})
+		return
+	}
+	var service *archiveServiceConflict
+	if errors.As(err, &service) {
+		writeJSON(w, http.StatusConflict, map[string]any{"error": service.Error(), "code": "archive_service_stop"})
+		return
+	}
 	var capacity *archiveCapacityError
 	if errors.As(err, &capacity) {
 		writeJSON(w, http.StatusInsufficientStorage, map[string]any{"error": capacity.Error(), "estimate": capacity.Estimate})

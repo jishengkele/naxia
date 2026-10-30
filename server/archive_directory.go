@@ -16,6 +16,8 @@ import (
 	"sort"
 	"strings"
 	"time"
+
+	"github.com/Autumn-27/artex/taskproc"
 )
 
 const directoryArchiveKind = "directory"
@@ -79,12 +81,14 @@ type archiveSource struct {
 }
 
 type archiveSpaceEstimate struct {
-	EstimatedBytes uint64    `json:"estimated_bytes"`
-	RequiredBytes  uint64    `json:"required_bytes"`
-	AvailableBytes uint64    `json:"available_bytes"`
-	FileCount      int64     `json:"file_count"`
-	Sufficient     bool      `json:"sufficient"`
-	SnapshotAt     time.Time `json:"snapshot_at"`
+	EstimatedBytes      uint64             `json:"estimated_bytes"`
+	RequiredBytes       uint64             `json:"required_bytes"`
+	AvailableBytes      uint64             `json:"available_bytes"`
+	FileCount           int64              `json:"file_count"`
+	Sufficient          bool               `json:"sufficient"`
+	SnapshotAt          time.Time          `json:"snapshot_at"`
+	Writers             []archiveWriter    `json:"writers,omitempty"`
+	BackgroundProcesses []taskproc.Process `json:"background_processes,omitempty"`
 }
 
 func archiveInventory(root string, hash bool) ([]archiveFileRecord, error) {

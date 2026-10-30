@@ -175,6 +175,8 @@ export interface TaskArchiveEstimate {
   file_count: number;
   sufficient: boolean;
   snapshot_at: string;
+  writers?: { pid: number; start_ticks: number; name: string; files: string[]; managed: boolean; task_id?: number }[];
+  background_processes?: { pid: number; start_ticks: number; name: string; task_id: number; session_id?: string; intent_id?: number }[];
 }
 
 export interface ArchiveBatchItem {

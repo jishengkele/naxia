@@ -23,6 +23,7 @@ type archiveAdmissionPlan struct {
 	TaskID         int64                   `json:"task_id"`
 	ExplorationID  int64                   `json:"exploration_id"`
 	SnapshotAt     time.Time               `json:"snapshot_at"`
+	RequestedAt    time.Time               `json:"requested_at"`
 	Sources        []archiveSource         `json:"sources"`
 	DatabaseDigest string                  `json:"database_digest"`
 	LLMBytes       int64                   `json:"llm_bytes"`
@@ -416,6 +417,13 @@ func (s *Server) estimateTaskArchives(w http.ResponseWriter, r *http.Request) {
 		}
 		total.EstimatedBytes += plan.Space.EstimatedBytes
 		total.FileCount += plan.Space.FileCount
+		processes, writers, err := s.archiveProcessState(numeric, plan.Sources)
+		if err != nil {
+			writeArchiveError(w, err)
+			return
+		}
+		total.Writers = append(total.Writers, writers...)
+		total.BackgroundProcesses = append(total.BackgroundProcesses, processes...)
 		if first || plan.Space.AvailableBytes < available {
 			available = plan.Space.AvailableBytes
 			first = false
@@ -469,6 +477,13 @@ func copyArchiveSource(ctx context.Context, source archiveSource, destination st
 // the task write barrier. The handler captures the accepted snapshot itself;
 // a FIFO worker must not replace it with whatever data exists minutes later.
 func (s *Server) prepareTaskArchive(ctx context.Context, id int64) (item *db.TaskArchive, err error) {
+	requestedAt := time.Now().UTC()
+	servicesStopped := false
+	defer func() {
+		if err != nil && servicesStopped {
+			err = fmt.Errorf("归档未完成，原数据保留；已停止的后台服务不会自动重启: %w", err)
+		}
+	}()
 	s.archivePrepareMu.Lock()
 	defer s.archivePrepareMu.Unlock()
 	previous, err := s.m.pg.GetTaskArchiveByTask(id)
@@ -500,10 +515,27 @@ func (s *Server) prepareTaskArchive(ctx context.Context, id int64) (item *db.Tas
 	if busy || s.engine.inflightCount(taskID) != 0 {
 		return nil, errors.New("任务仍有运行中的 Agent 或对话，请等待结束后重试归档")
 	}
+	processes, writers, processErr := s.archiveProcessState(id, plan.Sources)
+	if processErr != nil {
+		return nil, processErr
+	}
+	if unknown := unknownArchiveWriters(writers); len(unknown) > 0 {
+		return nil, &archiveWriterConflict{Writers: writers}
+	}
+	// Capacity was checked before stopping anything. Only persisted, task-owned
+	// services can be stopped; legacy/foreign writers require operator action.
+	// Re-estimate afterwards so shutdown logs and state are in the snapshot.
+	if s.processes != nil {
+		servicesStopped = len(processes) > 0
+		if err = s.processes.Stop(ctx, id); err != nil {
+			return nil, &archiveServiceConflict{Err: err}
+		}
+	}
 	plan, snapshot, err := s.estimateArchive(ctx, id)
 	if err != nil {
 		return nil, err
 	}
+	plan.RequestedAt = requestedAt
 	if err = checkArchiveCapacity(plan.Space); err != nil {
 		return nil, err
 	}
@@ -631,7 +663,7 @@ func (s *Server) prepareTaskArchive(ctx context.Context, id int64) (item *db.Tas
 	if err = writeArchiveFile(filepath.Join(prepared, "source-plan.json"), planRaw); err != nil {
 		return nil, err
 	}
-	summary, err := json.MarshalIndent(map[string]any{"task_id": id, "snapshot_at": plan.SnapshotAt, "program_version": BuildVersion, "data_counts": snapshot.DataCounts, "aggregate_stats": snapshot.AggregateStats, "space": plan.Space, "scope": "task data and associated records; global authentication secrets are not part of a task archive", "traffic_hot_copy_retained": true}, "", "  ")
+	summary, err := json.MarshalIndent(map[string]any{"task_id": id, "requested_at": plan.RequestedAt, "snapshot_at": plan.SnapshotAt, "program_version": BuildVersion, "data_counts": snapshot.DataCounts, "aggregate_stats": snapshot.AggregateStats, "space": plan.Space, "scope": "task data and associated records; global authentication secrets are not part of a task archive", "traffic_hot_copy_retained": true}, "", "  ")
 	if err != nil {
 		return nil, err
 	}

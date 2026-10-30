@@ -140,6 +140,7 @@ import type {
 } from "@/lib/types";
 import { MAX_TASK_REMARK_RUNES, MAX_TASK_WORKER_COUNT, parseWorkerCountInput } from "@/lib/types";
 import { cn } from "@/lib/utils";
+import { archiveAdmissionBlocked } from "@/lib/archive-admission";
 
 // fmtBytes renders a human file size for the upload manifest.
 function fmtBytes(n: number): string {
@@ -1536,7 +1537,7 @@ function ArchiveConfirmDialog({
         <AlertDialogHeader>
           <AlertDialogTitle>{count === 1 ? "归档任务" : `归档 ${count} 个任务`}</AlertDialogTitle>
           <AlertDialogDescription className="[overflow-wrap:anywhere]">
-            先检查目标盘空间，再冻结任务写入并保存完整目录快照。数据和文件校验通过后才提交归档；后台服务仍在写入或数据发生变化时会阻止归档并保留原数据。恢复后保留归档目录。
+            先检查目标盘空间，再阻止任务启动新执行，正常停止已登记属于该任务的后台服务。服务退出后的日志和文件也会保存到完整快照。未知后台进程仍在写入或校验失败时会阻止归档并保留原数据；已经停止的服务不会自动重启。恢复后保留归档目录。
           </AlertDialogDescription>
         </AlertDialogHeader>
         <div className="grid gap-2 rounded-md border p-3 text-sm" aria-live="polite">
@@ -1545,13 +1546,24 @@ function ArchiveConfirmDialog({
             <p>所需空间（含分配开销与余量）：{formatArchiveBytes(estimate.required_bytes)}</p>
             <p>目标盘可用：{formatArchiveBytes(estimate.available_bytes)}</p>
             {!estimate.sufficient && <p className="text-destructive">剩余空间不足，不能归档。</p>}
+            {Boolean(estimate.background_processes?.length) && <div className="grid gap-1">
+              <p>确认归档将正常停止以下任务后台服务：</p>
+              {estimate.background_processes?.map((p) => <p key={`${p.pid}:${p.start_ticks}`} className="text-xs">任务 #{p.task_id} · PID {p.pid} · {p.name}</p>)}
+            </div>}
+            {Boolean(estimate.writers?.length) && <div className="grid max-h-48 gap-2 overflow-y-auto [overflow-wrap:anywhere]">
+              <p>当前文件写入者：</p>
+              {estimate.writers?.map((p) => <div key={`${p.task_id}:${p.pid}:${p.start_ticks}`} className={p.managed ? "text-xs" : "text-xs text-destructive"}>
+                <p>任务 #{p.task_id} · PID {p.pid} · {p.name} · {p.managed ? "已登记，归档时正常停止" : "未知或其他任务进程，需先由管理员处理"}</p>
+                {p.files.map((file) => <p key={file}>{file}</p>)}
+              </div>)}
+            </div>}
             <p className="text-muted-foreground text-xs">确认时会再次读取实际空间并建立快照，不使用过期估算放行。</p>
           </> : <p>正在计算任务占用并读取目标盘剩余空间…</p>}
         </div>
         <AlertDialogFooter>
           <AlertDialogCancel disabled={pending}>取消</AlertDialogCancel>
           <AlertDialogAction
-            disabled={pending || !estimate?.sufficient || Boolean(estimateError)}
+            disabled={pending || Boolean(estimateError) || archiveAdmissionBlocked(estimate)}
             onClick={async (event) => {
               event.preventDefault();
               setPending(true);
