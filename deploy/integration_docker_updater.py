@@ -27,8 +27,9 @@ class RealDockerTests(unittest.TestCase):
     def setUpClass(cls):
         cls.temp = tempfile.TemporaryDirectory()
         cls.build = Path(cls.temp.name)
-        (cls.build / "app.py").write_text('''import os,json
+        (cls.build / "app.py").write_text('''import os,json,signal,sys
 from http.server import BaseHTTPRequestHandler,HTTPServer
+signal.signal(signal.SIGTERM,lambda *_:sys.exit(0))
 class H(BaseHTTPRequestHandler):
  def do_GET(self):
   values={'/api/health':json.dumps({'ok':True,'version':os.environ['FIXTURE_VERSION']}),'/api/auth/status':'{"initialized":true}','/api/update/settings':'{}','/':'<!doctype html><script src="/app.js"></script>','/app.js':'console.log("ready")'}
@@ -68,9 +69,15 @@ HTTPServer(('0.0.0.0',8787),H).serve_forever()
         run("docker", "compose", "up", "-d", cwd=self.project)
         self.addCleanup(self.cleanup_stack)
         for _ in range(60):
-            p = subprocess.run(["docker","compose","exec","-T","postgres","pg_isready","-U","naxia"],cwd=self.project,stdout=subprocess.DEVNULL)
+            # The image briefly runs a Unix-socket-only init server before the
+            # configured database exists. Wait for an actual TCP SQL query.
+            p = subprocess.run(["docker","compose","exec","-T","postgres","sh","-c",
+                'PGPASSWORD="$POSTGRES_PASSWORD" psql -h 127.0.0.1 -U "$POSTGRES_USER" -d "$POSTGRES_DB" -Atc "SELECT 1"'],
+                cwd=self.project,stdout=subprocess.DEVNULL,stderr=subprocess.DEVNULL)
             if p.returncode == 0: break
             time.sleep(1)
+        else:
+            self.fail("PostgreSQL did not become ready")
         self.w = updater.Worker(self.project, self.root / "state", IMAGE, health_seconds=2)
         self.addCleanup(self.w.process_lock.close)
         self.w.db("psql","-v","ON_ERROR_STOP=1","-c","CREATE TABLE settings(key text PRIMARY KEY,value text); CREATE TABLE proof(value text); INSERT INTO proof VALUES('original');")
