@@ -205,7 +205,11 @@ func TestMainSideConcurrencyAndIndependentCancellation(t *testing.T) {
 			p := fakeProvider{stream: func(ctx context.Context, _ llm.CompletionRequest) iter.Seq2[llm.StreamEvent, error] {
 				return func(y func(llm.StreamEvent, error) bool) {
 					started <- struct{}{}
-					y(llm.StreamEvent{Type: llm.SEMessageStart, Usage: llm.Usage{InputTokens: 7}}, nil)
+					// Cancellation can race the first event. The iterator must
+					// honor the consumer's false result before yielding again.
+					if !y(llm.StreamEvent{Type: llm.SEMessageStart, Usage: llm.Usage{InputTokens: 7}}, nil) {
+						return
+					}
 					<-ctx.Done()
 					y(llm.StreamEvent{}, ctx.Err())
 				}
