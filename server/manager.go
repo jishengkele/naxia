@@ -20,6 +20,7 @@ import (
 	"github.com/Autumn-27/artex/enrich"
 	"github.com/Autumn-27/artex/guard"
 	"github.com/Autumn-27/artex/intercept"
+	"github.com/Autumn-27/artex/taskproc"
 	"github.com/Autumn-27/artex/traffic"
 	actool "github.com/Autumn-27/norma/tool"
 )
@@ -273,11 +274,11 @@ const (
 	// settingGlobalProxy is the global egress proxy for all target traffic
 	// (http/https/socks5). Empty = direct. Distinct from web_search_proxy (which
 	// only routes the search backend) and the per-profile LLM proxy.
-	settingGlobalProxy = "global_proxy"
+	settingGlobalProxy  = "global_proxy"
 	settingShowEgressIP = "show_egress_ip"
-	settingWorkers     = "workers"
-	settingWorkerPools = "worker_pools"
-	settingLLMRecord   = "llm_record"
+	settingWorkers      = "workers"
+	settingWorkerPools  = "worker_pools"
+	settingLLMRecord    = "llm_record"
 	// LLM 轮询(故障转移)。默认关闭——开启后走「全局激活配置」的 agent 在当前配置
 	// 不可用(余额不足/key 失效/限流/服务异常)时自动切到下一个配置。
 	// settingLLMPoolBindFallback 仅在轮询开启时有意义:默认关闭,即 agent/任务显式
@@ -1744,7 +1745,14 @@ func (m *Manager) SetTaskStatus(id, status string) error {
 // staged while PostgreSQL excludes asset/anchor writers. Both are restored on a
 // database failure and purged only after its commit.
 func (m *Manager) DeleteTask(id string, opts DeleteTaskOptions) (DeleteTaskResult, error) {
-	result := DeleteTaskResult{Deleted: id}
+	return m.DeleteTaskContext(context.Background(), id, opts)
+}
+
+// DeleteTaskContext is the shared deletion boundary, including non-HTTP callers.
+// Runtime callers first drain Agent execution under the server delete barrier.
+// Process teardown is required even when DeleteFiles is false.
+func (m *Manager) DeleteTaskContext(ctx context.Context, id string, opts DeleteTaskOptions) (result DeleteTaskResult, err error) {
+	result = DeleteTaskResult{Deleted: id}
 	n, err := strconv.ParseInt(id, 10, 64)
 	if err != nil {
 		return result, err
@@ -1757,6 +1765,21 @@ func (m *Manager) DeleteTask(id string, opts DeleteTaskOptions) (DeleteTaskResul
 		m.forgetTask(id, n)
 		return result, nil
 	}
+	roots, err := taskDeleteProcessRoots(m.dir, id, registered.ExplorationID)
+	if err != nil {
+		return result, err
+	}
+	registry := &taskproc.Registry{Root: filepath.Join(m.dir, ".process-scopes")}
+	stopped, err := prepareTaskDeleteProcesses(ctx, registry, n, roots)
+	defer func() {
+		var committed *taskDeleteCommittedError
+		if err != nil && stopped && !errors.As(err, &committed) {
+			err = fmt.Errorf("删除未完成，已停止的后台服务不会自动重启: %w", err)
+		}
+	}()
+	if err != nil {
+		return result, err
+	}
 
 	var fileStage *taskFileDeleteStage
 	if opts.DeleteFiles {
@@ -1765,12 +1788,19 @@ func (m *Manager) DeleteTask(id string, opts DeleteTaskOptions) (DeleteTaskResul
 			return result, err
 		}
 		result.FilesDeleted = fileStage.deleted
+		for _, move := range fileStage.moves {
+			roots = append(roots, move.staged)
+		}
 	}
 
 	var trafficStage *traffic.HostDeleteStage
-	var prepare func(pgdb.TaskDeletePreparation) error
-	if opts.DeleteTraffic && m.traffic != nil {
-		prepare = func(p pgdb.TaskDeletePreparation) error {
+	prepare := func(p pgdb.TaskDeletePreparation) error {
+		// Recheck after file staging and before PostgreSQL removes any row.
+		// A late process or a descriptor to renamed data cancels and rolls back.
+		if err := ensureTaskDeleteProcessesQuiet(ctx, registry, n, roots); err != nil {
+			return err
+		}
+		if opts.DeleteTraffic && m.traffic != nil {
 			if len(p.TrafficHosts) == 0 {
 				return nil
 			}
@@ -1779,8 +1809,8 @@ func (m *Manager) DeleteTask(id string, opts DeleteTaskOptions) (DeleteTaskResul
 				return err
 			}
 			result.TrafficDeleted = trafficStage.Deleted()
-			return nil
 		}
+		return nil
 	}
 
 	dbResult, err := m.pg.DeleteTaskCascadePrepared(

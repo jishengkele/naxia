@@ -2254,7 +2254,7 @@ function DeleteTaskDialog({
             ) : (
               "该任务"
             )}
-            的执行记录与探索链路将被永久删除。
+            的执行记录与探索链路将被永久删除。删除前会正常停止已登记的任务后台服务，即使保留任务文件也会停止；未知进程仍引用任务路径或服务未退出时会取消删除。已停止的服务不会因删除失败而自动重启。
           </AlertDialogDescription>
         </AlertDialogHeader>
         <DeleteOptionFields idPrefix={task.id} options={options} onOptionsChange={setOptions} disabled={deleting} />
@@ -2398,7 +2398,7 @@ function BulkDeleteTasksDialog({
         <AlertDialogHeader>
           <AlertDialogTitle>确认删除所选 {ids.length} 个任务？</AlertDialogTitle>
           <AlertDialogDescription>
-            这些任务的执行记录与探索链路将被永久删除，下方清理选项对所选任务统一生效。
+            这些任务的执行记录与探索链路将被永久删除，下方清理选项对所选任务统一生效。每个任务删除前会先正常停止已登记的后台服务；未知进程仍引用任务路径或服务未退出时会取消该任务的删除。已停止的服务不会自动重启。
           </AlertDialogDescription>
         </AlertDialogHeader>
         <div className="text-muted-foreground flex flex-wrap gap-1 text-xs">
