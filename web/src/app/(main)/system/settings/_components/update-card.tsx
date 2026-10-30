@@ -97,6 +97,32 @@ export function UpdateCard() {
     check(true);
   }, [check]);
 
+  // Host progress survives app container recreation and browser refresh. Never
+  // declare Docker success from /health alone: cleanup/rollback may still run.
+  React.useEffect(() => {
+    if (info?.mode !== "docker" || !info.docker_ready) return;
+    let active = true;
+    const poll = async () => {
+      while (active) {
+        try {
+          const st = await api.dockerUpdateStatus();
+          if (!active) return;
+          setBusy(st.running);
+          setProgress({ ...st, percent: -1 });
+          if (st.phase === "complete" && st.version?.replace(/^v/, "") !== info.current.replace(/^v/, "")) {
+            window.location.reload();
+            return;
+          }
+        } catch {
+          // The app is temporarily unavailable while Compose recreates it.
+        }
+        await sleep(2000);
+      }
+    };
+    void poll();
+    return () => { active = false; };
+  }, [info?.mode, info?.docker_ready, info?.current]);
+
   const saveNetwork = async () => {
     if (!network) return;
     setSavingNetwork(true);
@@ -187,8 +213,8 @@ export function UpdateCard() {
       `确定更新到 ${info.latest}？\n\n` +
         "更新会重启程序，正在运行的任务会被中断。\n" +
         (info.mode === "docker"
-          ? "\n注意：容器内更新只替换程序本身，不会更新镜像里的 playwright / nmap 等工具链；" +
-            "若新版本依赖新工具，请改用 docker compose pull。"
+          ? "\n将拉取新版镜像，停止应用并备份数据库和全部可写挂载，重建应用容器。" +
+            "验收失败自动恢复；成功后清理本次旧镜像与备份。升级期间请勿执行任务或修改数据。"
           : ""),
     );
     if (!ok) return;
@@ -198,7 +224,7 @@ export function UpdateCard() {
     api
       .applyUpdate()
       .then(() => {
-        openStream(from);
+        if (info.mode !== "docker") openStream(from);
       })
       .catch((e) => {
         setBusy(false);
@@ -358,12 +384,11 @@ export function UpdateCard() {
           </p>
         )}
 
-        {info?.mode === "docker" && info.has_update && (
+        {info?.mode === "docker" && (
           <p className="text-xs text-muted-foreground">
-            Docker 下的更新只替换程序本身，不更新镜像里的 playwright / nmap 等工具链，且
-            <span className="font-mono"> docker compose up -d </span>
-            重建容器后会退回镜像自带的版本。需要连镜像一起升级请执行
-            <span className="font-mono"> docker compose pull artex &amp;&amp; docker compose up -d artex</span>。
+            {info.docker_ready
+              ? "Docker 完整升级已接通：更新镜像和工具链、重建应用、验收后清理本次旧镜像与备份。失败时保留恢复材料。镜像拉取使用宿主机 Docker 的网络与代理设置。"
+              : `Docker 完整升级尚不可用：${info.docker_reason || "请按 README 安装宿主机更新服务"}。不会降级为仅更新容器内程序。`}
           </p>
         )}
 
@@ -371,6 +396,9 @@ export function UpdateCard() {
           <p role="alert" className="text-xs text-destructive">
             更新失败：{progress.error || progress.message}
           </p>
+        )}
+        {progress?.phase === "complete" && (
+          <p role="status" className="text-xs text-muted-foreground">{progress.message}</p>
         )}
 
         {showProgress && (
@@ -404,7 +432,7 @@ export function UpdateCard() {
               restarting ||
               !!info?.error ||
               !info?.has_update ||
-              info?.asset_available === false
+              (info?.mode === "docker" ? !info.docker_ready : info?.asset_available === false)
             }
           >
             <DownloadIcon className="size-4" />
@@ -419,8 +447,9 @@ export function UpdateCard() {
         </div>
 
         <p className="text-xs text-muted-foreground">
-          一键更新依赖守护脚本重启程序。请通过 <span className="font-mono">start.sh</span>（Windows 为
-          <span className="font-mono"> start.bat</span>）启动 ARTEX；直接运行 artex 本体时，程序退出后不会被自动拉起。
+          {info?.mode === "docker"
+            ? "Docker 更新由宿主机更新服务执行；数据库容器、业务归档和现有部署配置保持保留。"
+            : "独立程序更新依赖 start.sh（Windows 为 start.bat）重新启动程序。"}
         </p>
       </CardContent>
     </Card>

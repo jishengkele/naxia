@@ -225,6 +225,17 @@ func (s *Server) updateCheck(w http.ResponseWriter, r *http.Request) {
 		"boot_notice": boot.Detail,
 		"rolled_back": boot.RolledBack,
 	}
+	if mode == "docker" {
+		st, err := dockerUpdateCall(r.Context(), "GET", "/status", nil)
+		out["docker_ready"] = err == nil && st.Ready
+		out["has_backup"] = false // binary rollback cannot restore an image deployment
+		if err != nil {
+			out["docker_reason"] = err.Error()
+		}
+		if err == nil && !st.Ready {
+			out["docker_reason"] = st.Message + "：" + st.Error
+		}
+	}
 
 	// 顶栏提示走缓存（默认）；用户点"检查更新"时带 force=1 强制回源。
 	force := r.URL.Query().Get("force") != ""
@@ -297,6 +308,15 @@ func (s *Server) updateApply(w http.ResponseWriter, r *http.Request) {
 		writeErr(w, 400, fmt.Sprintf("当前已是最新版本 %s", current))
 		return
 	}
+	if selfupdate.InDocker() {
+		st, err := dockerUpdateCall(r.Context(), "POST", "/apply", map[string]string{"version": rel.TagName})
+		if err != nil {
+			writeErr(w, 409, err.Error())
+			return
+		}
+		writeJSON(w, 202, map[string]any{"ok": true, "target": st.Version})
+		return
+	}
 	if !updHub.begin(rel.TagName) {
 		writeErr(w, 409, "已有一个更新正在进行中")
 		return
@@ -325,6 +345,10 @@ func (s *Server) updateApply(w http.ResponseWriter, r *http.Request) {
 
 // updateRollback 主动退回上一版本（换装前备份的 artex.old）。
 func (s *Server) updateRollback(w http.ResponseWriter, r *http.Request) {
+	if selfupdate.InDocker() {
+		writeErr(w, 409, "Docker 部署不支持程序文件回滚；镜像升级失败由宿主机更新服务恢复")
+		return
+	}
 	if _, running := updHub.snapshot(); running {
 		writeErr(w, 409, "更新正在进行中，无法回滚")
 		return

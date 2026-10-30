@@ -1,0 +1,14 @@
+# Optional host-worker bridge. Merge with your existing Compose files, preserving
+# existing override files and loopback port bindings. No docker.sock mount.
+services:
+  artex:
+    environment:
+      ARTEX_DOCKER_UPDATE_SOCKET: /run/naxia-updater/control.sock
+    volumes:
+      - /run/naxia-updater:/run/naxia-updater:ro
+      - type: bind
+        source: ${ARTEX_JWT_KEY_FILE:-./secrets/jwt.key}
+        target: /app/jwt.key
+        read_only: true
+        bind:
+          create_host_path: false

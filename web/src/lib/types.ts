@@ -1720,8 +1720,10 @@ export interface UpdateSettings {
 export interface UpdateCheck {
   /** 当前运行的版本；开发构建为 "dev" 或 git describe 的带后缀形式。 */
   current: string;
-  /** 运行形态。docker 下换装只作用于容器可写层，重建容器会退回镜像版本。 */
+  /** Docker 使用宿主机服务更新完整镜像；独立程序使用二进制更新。 */
   mode: "docker" | "binary";
+  docker_ready?: boolean;
+  docker_reason?: string;
   os: string;
   arch: string;
   repo: string;
@@ -1749,9 +1751,18 @@ export interface UpdateCheck {
 
 /** /api/update/stream 推送的一条更新进度。 */
 export interface UpdateProgress {
-  phase: "idle" | "downloading" | "verifying" | "extracting" | "staged" | "failed";
+  phase: "idle" | "downloading" | "verifying" | "extracting" | "staged" | "failed" | "complete";
   /** 仅下载阶段有意义（0-100）；其余阶段为 -1。 */
   percent: number;
+  message: string;
+  version?: string;
+  error?: string;
+}
+
+export interface DockerUpdateStatus {
+  ready: boolean;
+  running: boolean;
+  phase: UpdateProgress["phase"];
   message: string;
   version?: string;
   error?: string;

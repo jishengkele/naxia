@@ -194,15 +194,76 @@ ARTEX_TARGETS=linux/amd64,windows/amd64 ./build.sh --release
 
 本仓库构建的程序固定从 `jishengkele/naxia` 的最新正式 GitHub Release 检查更新，跳过草稿和预发布版本。已安装的上游程序仍使用其编译时的更新源，因此首次切换必须手动安装本仓库构建的程序；以后发布更高的三段式版本即可通过页面升级。仅推送 main 或 Git 标签但未发布 Release，不会产生可在线安装的新版本。
 
-点「更新」后：下载当前平台的发布包 → 比对 Release 的 `SHA256SUMS` → 用 `-h` 冒烟测试新二进制 → 暂存为 `artex.new` → 程序退出，由 `start.sh` / `start.bat` 重新拉起并完成换装。页面会自动等到新版本上线后刷新。
+独立程序点「更新」后：下载当前平台的发布包 → 比对 Release 的 `SHA256SUMS` → 用 `-h` 冒烟测试新二进制 → 暂存为 `artex.new` → 程序退出，由 `start.sh` / `start.bat` 重新拉起并完成换装。页面会自动等到新版本上线后刷新。
+
+Docker 模式点「立即更新」会通过宿主机更新服务完成**整个镜像升级**：拉取目标版本镜像、固定摘要 → 停止应用 → 备份实际 PostgreSQL 数据库和全部可写 bind 挂载（包括业务归档）并校验 → 只重建 `artex` → 连续验收版本、登录认证、前端资源、挂载、签名密钥与运行状态 → 成功后删除本次旧镜像和本次备份。PostgreSQL 容器不重建；升级失败会恢复旧 `.env`、完整数据库和文件，再启动旧镜像，失败备份保留。进度在宿主机持久化，页面刷新、应用容器重建后仍可查询，不能仅凭新版本短暂上线判定成功。
+
+**现有 Docker 部署需要先一次性安装宿主机服务并接入 socket**，以后才能从面板更新。没有接通时按钮禁用，后端也拒绝更新，不会退回“只替换容器内程序”。旧版本面板无法自行安装宿主机服务，因此首次接入仍需手动部署包含此功能的新镜像。
 
 - **失败不会留下坏程序**：校验或冒烟不通过就丢弃暂存件、继续跑当前版本；换装后的新版若连续 3 次启动失败，会自动回滚到 `artex.old`（失败的那个留作 `artex.failed` 供排查）。
 - **随时可回退**：上一版本保留为 `artex.old`，卡片上有「回滚到上一版本」。注意数据库结构不会回退。
 - **更新会中断正在运行的任务**——更新即重启，请在空闲时进行。
 - **开发构建不给更新**：版本号是 `dev` 或 `git describe` 带后缀时禁用，避免正式版覆盖掉本地调试的二进制。
-- **Docker 下只换程序、不换镜像**：镜像里的 playwright / nmap 等工具链不会跟着升级，且 `docker compose up -d` 重建容器后会退回镜像自带的版本。要连镜像一起升级仍请用 `docker compose pull artex && docker compose up -d artex`。
+- **Docker 完整升级**：按下面的一次性接入说明启用宿主机服务。面板版本代表程序版本，只有宿主机验收完成才代表镜像升级完成；新版工具链会随镜像更新。任务会中断，升级期间请勿操作应用数据，失败回退会恢复升级前的数据库和文件快照。
 - **更新代理（可选）**与其他代理设置使用相同的「地址输入框 + 保存」方式。填写独立更新代理后保存，例如 `http://127.0.0.1:7897`；支持 `http://`、`https://`、`socks5://`、`socks5h://` 及用户名密码认证。清空并保存即为直连，不受全局代理或 `HTTP_PROXY` / `HTTPS_PROXY` 环境变量影响。保存后自动重新检查，检查版本、校验和下载和发布包下载使用同一个出口。更新只从 GitHub 域名下载并强制 HTTPS。
 - 代理地址由 **ARTEX 服务端**访问。Docker 内的 `127.0.0.1` 指容器自身；代理运行在宿主机时，应使用容器可达地址（Docker Desktop 通常为 `http://host.docker.internal:7897`），并允许容器访问代理端口。
+
+#### Docker 面板完整升级：一次性接入
+
+适用于 Linux + systemd、Python 3.9+、Docker Compose v2。宿主机部署目录必须包含 `.env` 和 Compose 配置，服务名为 `artex`、`postgres`，应用实际使用该 PostgreSQL，端口为容器内 8787，应用可写持久化使用 bind 挂载。外部数据库、命名的应用数据卷、多个应用实例需要独立升级方案，执行器会明确拒绝而不是备份错误的数据。数据库应仅供这套部署使用。
+
+在可信的本仓库新版本源码中执行（`/opt/naxia` 替换为实际部署目录）：
+
+```bash
+sudo sh deploy/install-docker-updater.sh /opt/naxia
+# 自定义镜像仓库可作为第二个参数；必须和部署镜像、发布流程一致。
+# sudo sh deploy/install-docker-updater.sh /opt/naxia yourname/yourimage
+```
+
+将本仓库 `docker-compose.updater.yml` 复制到部署目录。保留已有 `.env` 和 Compose 覆盖文件，**将该文件追加到原来的 Compose 文件列表**。例如原列表是 `docker-compose.yml:docker-compose.override.yml`，则在 `.env` 设置：
+
+```dotenv
+COMPOSE_FILE=docker-compose.yml:docker-compose.override.yml:docker-compose.updater.yml
+```
+
+如果没有覆盖文件，使用 `COMPOSE_FILE=docker-compose.yml:docker-compose.updater.yml`。不要覆盖原有端口、网络、数据库、归档或其他自定义挂载。工作服务用同一部署目录的 `.env` 解析相同列表，仅更新 `ARTEX_IMAGE` / `ARTEX_TAG`，不运行 `git pull`。
+
+JWT 密钥必须持久化。**在首次重建之前**，从仍在运行的旧容器保留原密钥；已有持久化密钥时直接复用，不能生成新的密钥替代：
+
+```bash
+cd /opt/naxia
+sudo mkdir -p secrets
+sudo chmod 700 secrets
+# 在尚未合并新增密钥挂载的 Compose 配置前执行这一步：
+test -f secrets/jwt.key || docker compose cp artex:/app/jwt.key secrets/jwt.key
+sudo chmod 600 secrets/jwt.key
+```
+
+覆盖文件默认绑定 `./secrets/jwt.key`。原来使用其他路径时，在 `.env` 设置 `ARTEX_JWT_KEY_FILE=/原来的密钥路径`。完成文件准备和配置合并后，将 `ARTEX_TAG` 设置为包含该功能的正式镜像，拉取并重建应用一次：
+
+```bash
+docker compose config --quiet
+docker compose pull artex
+docker compose up -d --no-deps artex
+systemctl status naxia-updater --no-pager
+```
+
+页面会显示“Docker 完整升级已接通”。应用只挂载 `/run/naxia-updater` 的只读目录，**不挂载 Docker socket**。服务没有 TCP 监听；它只接受正式版本号，不接受命令、主机目录、Compose 参数或任意镜像地址。默认使用本项目 GHCR 仓库，自定义仓库由 root 安装时固定。宿主机服务和配置不可放进应用可写挂载；应用进程以 root 运行才能连接当前的 root-only socket。
+
+更新代理仍用于 GitHub 查询以及独立程序的包下载，配置含义保持不变；**镜像拉取由宿主机 Docker daemon 执行，使用 daemon 的网络、代理及 registry 登录配置**，不会把容器内的 `127.0.0.1` 代理错误地套用到宿主机。
+
+备份位于 `/var/lib/naxia-updater/backup-*`，升级前按全部可写挂载的逻辑大小、条目开销、数据库大小和余量检查空间，并在停止应用后再次检查；磁盘写满或备份校验失败会终止并重新启动旧应用。所有业务归档也纳入恢复点，因此大归档会增加升级的临时空间与停机时间。成功后只清理**本次**备份和无人使用的旧应用镜像；其他实例引用的镜像、其他标签仓库、以前失败的备份和业务数据不会被全局清理，清理不完整会在页面提示，不会把已成功升级的数据库回退。
+
+服务重启或断电导致升级中断时，会阻止自动重试。检查 `/var/lib/naxia-updater/status.json` 和对应备份里的 `recovery.json`；只有含 `complete.json` 的完整备份才能用于自动恢复。在确认需要丢弃升级后写入、恢复旧快照后，由 root 执行：
+
+```bash
+systemctl stop naxia-updater
+python3 /usr/local/lib/naxia-updater/docker_updater.py --project /opt/naxia \
+  --recover /var/lib/naxia-updater/backup-实际备份编号
+systemctl start naxia-updater
+```
+
+恢复失败时保持禁用更新并保留材料，先排查 `journalctl -u naxia-updater`、应用日志与备份，不能删除状态文件强行重试。不完整备份不能用于恢复数据库和文件；若应用尚未换装，应先核对旧配置与旧容器，再人工恢复启动。宿主机执行器本身由 root 维护，后续涉及执行器协议或恢复逻辑的版本需同步更新此服务；普通应用镜像更新无需重复安装。
 
 ### 维护者：通过 GitHub Actions 发布在线更新
 

@@ -113,6 +113,7 @@ import type {
   TrafficHost,
   TrafficResp,
   UpdateCheck,
+  DockerUpdateStatus,
   UpdateSettings,
   UsageStats,
   WorkspaceFile,
@@ -1456,5 +1457,6 @@ export const api = {
   checkUpdate: (force = false) => get<UpdateCheck>(`/update/check${force ? "?force=1" : ""}`),
   // 202 即返回，实际下载在后台跑，进度走 /api/update/stream。
   applyUpdate: () => post<{ ok: boolean; target: string }>(`/update/apply`),
+  dockerUpdateStatus: () => get<DockerUpdateStatus>("/update/docker/status"),
   rollbackUpdate: () => post<{ ok: boolean }>(`/update/rollback`),
 };

@@ -15,6 +15,14 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  docker-updater:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - name: Real Docker image upgrade and PostgreSQL rollback
+        run: sudo python3 deploy/integration_docker_updater.py
+
   backend:
     runs-on: ubuntu-24.04
     timeout-minutes: 35
@@ -98,5 +106,9 @@ jobs:
           cache: true
       - name: Version allocation and CI gate regression tests
         run: node --test .github/scripts/*.test.cjs
+      - name: Docker updater transaction regression tests
+        run: sudo python3 -m unittest discover -s deploy -p 'test_*.py' -v
+      - name: Host updater installer shell syntax
+        run: sh -n deploy/install-docker-updater.sh
       - name: Validate workflow syntax and shell snippets
         run: go run github.com/rhysd/actionlint/cmd/actionlint@v1.7.7 -color
