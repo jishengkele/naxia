@@ -2,6 +2,7 @@ package server
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -18,8 +19,15 @@ type taskDeleteProcessConflict struct {
 
 func (e *taskDeleteProcessConflict) Error() string {
 	var details []string
-	for _, r := range e.References {
-		details = append(details, fmt.Sprintf("PID %d (%s): %s", r.PID, r.Name, strings.Join(r.Paths, ", ")))
+	for _, r := range e.References[:min(3, len(e.References))] {
+		detail := fmt.Sprintf("PID %d (%s)", r.PID, r.Name)
+		if len(r.Paths) > 0 {
+			detail += ": " + r.Paths[0]
+		}
+		details = append(details, detail)
+	}
+	if len(e.References) > 3 {
+		details = append(details, fmt.Sprintf("另有 %d 个进程", len(e.References)-3))
 	}
 	if e.Err != nil {
 		details = append(details, e.Err.Error())
@@ -66,35 +74,20 @@ func taskDeleteProcessRoots(dataDir, id string, expID int64) ([]string, error) {
 }
 
 func prepareTaskDeleteProcesses(ctx context.Context, registry *taskproc.Registry, id int64, roots []string) (bool, error) {
-	if err := ctx.Err(); err != nil {
-		return false, &taskDeleteProcessConflict{Err: err}
-	}
-	owned, err := registry.List(id)
+	dataDir, err := filepath.Abs(filepath.Dir(registry.Root))
 	if err != nil {
 		return false, &taskDeleteProcessConflict{Err: err}
 	}
-	refs, err := taskproc.References(roots)
+	var workspaces []string
+	for _, kind := range []string{"tasks", "transcripts", "sessions", "noa", ".delete-staging"} {
+		workspaces = append(workspaces, filepath.Join(dataDir, kind))
+	}
+	stopped, err := registry.StopForDelete(ctx, id, roots, workspaces)
 	if err != nil {
-		return false, &taskDeleteProcessConflict{Err: err}
-	}
-	var unknown []taskproc.Reference
-	for _, r := range refs {
-		known := false
-		for _, p := range owned {
-			if p.PID == r.PID && p.StartTicks == r.StartTicks {
-				known = true
-				break
-			}
+		var blockers taskproc.DeleteBlockers
+		if errors.As(err, &blockers) {
+			return stopped, &taskDeleteProcessConflict{References: blockers}
 		}
-		if !known {
-			unknown = append(unknown, r)
-		}
-	}
-	if len(unknown) > 0 {
-		return false, &taskDeleteProcessConflict{References: unknown}
-	}
-	stopped := len(owned) > 0
-	if err := registry.Stop(ctx, id); err != nil {
 		return stopped, &taskDeleteProcessConflict{Err: err}
 	}
 	return stopped, ensureTaskDeleteProcessesQuiet(ctx, registry, id, roots)

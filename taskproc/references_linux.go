@@ -20,6 +20,12 @@ func vanished(err error) bool { return os.IsNotExist(err) || errors.Is(err, unix
 // files, including read-only/deleted descriptors. A browser can keep rendering
 // without an open writable file. Permission errors are not proof of quiescence.
 func References(roots []string) ([]Reference, error) {
+	return references(roots, nil, nil)
+}
+
+// selected limits inspection to the identities under consideration for shutdown.
+// excluded contains task-owned roots inside the wider shared workspace roots.
+func references(roots, excluded []string, selected map[int]uint64) ([]Reference, error) {
 	if len(roots) == 0 {
 		return nil, nil
 	}
@@ -38,6 +44,10 @@ func References(roots []string) ([]Reference, error) {
 		if err != nil {
 			continue
 		}
+		expected, include := selected[pid]
+		if selected != nil && !include {
+			continue
+		}
 		start, state, err := identity(pid)
 		if vanished(err) {
 			continue
@@ -48,10 +58,18 @@ func References(roots []string) ([]Reference, error) {
 		if state == "Z" || state == "X" {
 			continue
 		}
+		if selected != nil && start != expected {
+			continue
+		}
 		base := filepath.Join("/proc", entry.Name())
 		paths := map[string]bool{}
 		add := func(kind, target string) {
 			target = strings.TrimSuffix(target, " (deleted)")
+			for _, root := range excluded {
+				if target == root || strings.HasPrefix(target, root+string(filepath.Separator)) {
+					return
+				}
+			}
 			for _, root := range roots {
 				root = filepath.Clean(root)
 				if target == root || strings.HasPrefix(target, root+string(filepath.Separator)) {
@@ -88,7 +106,7 @@ func References(roots []string) ([]Reference, error) {
 					}
 					i += offset
 					end := i + len(root)
-					if end == len(arg) || strings.ContainsRune("/\\ \t\r\n\"'", rune(arg[end])) {
+					if argumentPathAt(arg[i:], root) && !excludedArgumentPath(arg[i:], excluded) {
 						paths["参数引用: "+root] = true
 						break
 					}
@@ -142,4 +160,18 @@ func References(roots []string) ([]Reference, error) {
 	}
 	sort.Slice(result, func(i, j int) bool { return result[i].PID < result[j].PID })
 	return result, nil
+}
+
+func argumentPathAt(arg, root string) bool {
+	return strings.HasPrefix(arg, root) && (len(arg) == len(root) ||
+		strings.ContainsRune("/\\ \t\r\n\"'", rune(arg[len(root)])))
+}
+
+func excludedArgumentPath(arg string, roots []string) bool {
+	for _, root := range roots {
+		if argumentPathAt(arg, root) {
+			return true
+		}
+	}
+	return false
 }

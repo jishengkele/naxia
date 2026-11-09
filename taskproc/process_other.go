@@ -7,3 +7,6 @@ import "context"
 func syncDirectory(string) error                      { return nil }
 func (r *Registry) List(int64) ([]Process, error)     { return nil, nil }
 func (r *Registry) Stop(context.Context, int64) error { return nil }
+func (r *Registry) StopForDelete(context.Context, int64, []string, []string) (bool, error) {
+	return false, nil
+}

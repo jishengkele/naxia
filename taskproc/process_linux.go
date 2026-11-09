@@ -25,22 +25,37 @@ func syncDirectory(path string) error {
 	return f.Sync()
 }
 
-func identity(pid int) (uint64, string, error) {
+type processStat struct {
+	start  uint64
+	state  string
+	parent int
+}
+
+func readProcessStat(pid int) (processStat, error) {
 	raw, err := os.ReadFile(filepath.Join("/proc", strconv.Itoa(pid), "stat"))
 	if err != nil {
-		return 0, "", err
+		return processStat{}, err
 	}
 	// comm may itself contain spaces and ')' characters.
 	end := strings.LastIndex(string(raw), ") ")
 	if end < 0 {
-		return 0, "", fmt.Errorf("invalid process stat")
+		return processStat{}, fmt.Errorf("invalid process stat")
 	}
 	fields := strings.Fields(string(raw)[end+2:])
 	if len(fields) < 20 {
-		return 0, "", fmt.Errorf("short process stat")
+		return processStat{}, fmt.Errorf("short process stat")
 	}
 	start, err := strconv.ParseUint(fields[19], 10, 64)
-	return start, fields[0], err
+	if err != nil {
+		return processStat{}, err
+	}
+	parent, err := strconv.Atoi(fields[1])
+	return processStat{start: start, state: fields[0], parent: parent}, err
+}
+
+func identity(pid int) (uint64, string, error) {
+	stat, err := readProcessStat(pid)
+	return stat.start, stat.state, err
 }
 
 func marker(pid int) (string, error) {
@@ -149,6 +164,16 @@ func signalTerm(p Process) error {
 		return nil
 	}
 	token, err := marker(p.PID)
+	if vanished(err) {
+		return nil
+	}
+	if err != nil {
+		return err
+	}
+	start, state, err = identity(p.PID)
+	if vanished(err) || err == nil && (state == "Z" || state == "X") {
+		return nil
+	}
 	if err != nil {
 		return err
 	}
@@ -165,33 +190,43 @@ func signalTerm(p Process) error {
 // Stop waits for normal termination, discovering late descendants on every
 // pass. It never escalates to SIGKILL or signals a group/unknown process.
 func (r *Registry) Stop(ctx context.Context, taskID int64) error {
+	_, err := stopProcesses(ctx, taskID, func() ([]Process, error) {
+		return r.List(taskID)
+	})
+	return err
+}
+
+func stopProcesses(ctx context.Context, taskID int64, list func() ([]Process, error)) (bool, error) {
 	ctx, cancel := context.WithTimeout(ctx, 10*time.Second)
 	defer cancel()
-	sent := map[string]bool{}
+	sent := map[processIdentity]bool{}
 	quietPasses := 0
 	for {
 		if err := ctx.Err(); err != nil {
-			return fmt.Errorf("后台服务未正常退出，原数据保留（已停止的服务不会自动重启）: %w", err)
+			return len(sent) > 0, fmt.Errorf("后台服务未正常退出，原数据保留（已停止的服务不会自动重启）: %w", err)
 		}
-		processes, err := r.List(taskID)
+		processes, err := list()
 		if err != nil {
-			return err
+			return len(sent) > 0, err
 		}
 		if len(processes) == 0 {
 			quietPasses++
 			if quietPasses >= 2 {
-				return nil
+				return len(sent) > 0, nil
 			}
 		} else {
 			quietPasses = 0
 		}
 		for _, p := range processes {
-			key := fmt.Sprintf("%d:%d", p.PID, p.StartTicks)
+			key := processIdentity{p.PID, p.StartTicks}
 			if sent[key] {
 				continue
 			}
+			if err := ctx.Err(); err != nil {
+				return len(sent) > 0, err
+			}
 			if err := signalTerm(p); err != nil {
-				return fmt.Errorf("停止任务 %d 后台进程 %d: %w", taskID, p.PID, err)
+				return len(sent) > 0, fmt.Errorf("停止任务 %d 后台进程 %d: %w", taskID, p.PID, err)
 			}
 			sent[key] = true
 		}

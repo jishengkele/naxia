@@ -62,6 +62,106 @@ func TestDeleteTaskStopsServicesEvenWhenKeepingFiles(t *testing.T) {
 	}
 }
 
+func TestDeleteTaskStopsUnmarkedBrowserChildOnlyWhenExclusive(t *testing.T) {
+	for _, shared := range []bool{false, true} {
+		t.Run(fmt.Sprintf("shared=%t", shared), func(t *testing.T) {
+			s, task, id := directoryArchiveFixture(t)
+			root := filepath.Join(s.m.dir, "tasks", task.ID)
+			registry := &taskproc.Registry{Root: filepath.Join(s.m.dir, ".process-scopes")}
+			env, err := registry.Register(id, 2148, "browser")
+			if err != nil {
+				t.Fatal(err)
+			}
+			foreignTask := ""
+			if shared {
+				foreignTask = fmt.Sprint(id + 1000)
+				foreignRoot := filepath.Join(s.m.dir, "tasks", foreignTask)
+				if err := os.MkdirAll(foreignRoot, 0700); err != nil {
+					t.Fatal(err)
+				}
+				foreignFile := filepath.Join(foreignRoot, "shared-profile")
+				if err := os.WriteFile(foreignFile, []byte("shared"), 0600); err != nil {
+					t.Fatal(err)
+				}
+			}
+			log := filepath.Join(root, "browser.log")
+			cmd := exec.Command("python3", "-c", `
+import os, subprocess, sys
+child = """
+import os, pathlib, signal, sys, time
+f = open(sys.argv[1], "w")
+foreign = (pathlib.Path.cwd().parent / sys.argv[2] / "shared-profile").open("rb") if sys.argv[2] else None
+def stop(*args):
+    f.write("shutdown-final\\n")
+    f.close()
+    os._exit(0)
+signal.signal(signal.SIGTERM, stop)
+f.write("ready\\n")
+f.flush()
+while True: time.sleep(.05)
+"""
+env = dict(os.environ)
+env.pop("NAXIA_PROCESS_SCOPE", None)
+p = subprocess.Popen([sys.executable, "-c", child, *sys.argv[1:]], env=env)
+print(p.pid, flush=True)
+p.wait()
+`, log, foreignTask)
+			cmd.Dir = root
+			cmd.Env = append(os.Environ(), env...)
+			stdout, err := cmd.StdoutPipe()
+			if err != nil {
+				t.Fatal(err)
+			}
+			if err := cmd.Start(); err != nil {
+				t.Fatal(err)
+			}
+			t.Cleanup(func() { _ = cmd.Process.Kill(); _ = cmd.Wait() })
+			var pid int
+			if _, err := fmt.Fscan(stdout, &pid); err != nil {
+				t.Fatal(err)
+			}
+			child, err := os.FindProcess(pid)
+			if err != nil {
+				t.Fatal(err)
+			}
+			t.Cleanup(func() { _ = child.Kill(); _ = child.Release() })
+			deadline := time.Now().Add(5 * time.Second)
+			for {
+				if data, _ := os.ReadFile(log); string(data) == "ready\n" {
+					break
+				}
+				if time.Now().After(deadline) {
+					t.Fatal("browser child not ready")
+				}
+				time.Sleep(10 * time.Millisecond)
+			}
+			w := httptest.NewRecorder()
+			req := httptest.NewRequest("DELETE", "/", strings.NewReader(`{"delete_files":false}`))
+			req.SetPathValue("id", task.ID)
+			s.pgDeleteTask(w, req)
+			row, err := s.m.pg.GetTask(id)
+			if err != nil {
+				t.Fatal(err)
+			}
+			data, err := os.ReadFile(log)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if shared {
+				if w.Code != http.StatusConflict || row == nil || string(data) != "ready\n" ||
+					!strings.Contains(w.Body.String(), "task_delete_processes") {
+					t.Fatalf("shared child affected: status=%d body=%s log=%q", w.Code, w.Body.String(), data)
+				}
+				if owned, err := registry.List(id); err != nil || len(owned) != 1 {
+					t.Fatalf("registered launcher affected: %+v %v", owned, err)
+				}
+			} else if w.Code != http.StatusOK || row != nil || string(data) != "ready\nshutdown-final\n" {
+				t.Fatalf("exclusive child not closed before deletion: status=%d body=%s log=%q", w.Code, w.Body.String(), data)
+			}
+		})
+	}
+}
+
 // No file in the task is open. The cwd alone proves that deletion would leave
 // a live browser/service behind, but does not authorize killing it.
 func TestDeleteUnknownIdleProcessReturnsConflictWithoutDeleting(t *testing.T) {
