@@ -428,24 +428,49 @@ func (s *Server) runHTTPTool(ctx context.Context, execRaw json.RawMessage, param
 	if strings.TrimSpace(rawURL) == "" {
 		return actool.Errorf("http url 为空"), nil
 	}
-	var bodyReader io.Reader
-	if spec.Body != "" {
-		bodyReader = strings.NewReader(renderTemplate(spec.Body, params, identity))
-	}
+	bodyText := renderTemplate(spec.Body, params, identity)
 	runCtx, cancel := context.WithTimeout(ctx, timeoutOr(spec.TimeoutMs, 30000))
 	defer cancel()
-	req, err := http.NewRequestWithContext(runCtx, method, rawURL, bodyReader)
-	if err != nil {
-		return actool.Errorf(err.Error()), nil
-	}
-	for k, v := range spec.Headers {
-		req.Header.Set(k, renderTemplate(v, params, identity))
+	newRequest := func() (*http.Request, error) {
+		var bodyReader io.Reader
+		if bodyText != "" {
+			bodyReader = strings.NewReader(bodyText)
+		}
+		req, err := http.NewRequestWithContext(runCtx, method, rawURL, bodyReader)
+		if err != nil {
+			return nil, err
+		}
+		for k, v := range spec.Headers {
+			req.Header.Set(k, renderTemplate(v, params, identity))
+		}
+		return req, nil
 	}
 	client := &http.Client{Timeout: timeoutOr(spec.TimeoutMs, 30000)}
 	if tr := s.httpProxyTransport(spec); tr != nil {
 		client.Transport = tr
 	}
+	req, err := newRequest()
+	if err != nil {
+		return actool.Errorf(err.Error()), nil
+	}
 	resp, err := client.Do(req)
+	if err != nil && spec.UseRecordingProxy && strings.TrimSpace(spec.Proxy) == "" && s.m != nil && s.m.EgressMode() == "proxy_fallback" && egressRetryableMethod(method) {
+		// The request body is recreated so a failed proxied attempt can be retried
+		// safely. A fallback is only applied to the managed recording/global path,
+		// never to an explicitly supplied tool proxy.
+		client.CloseIdleConnections()
+		if base, ok := http.DefaultTransport.(*http.Transport); ok {
+			direct := base.Clone()
+			direct.Proxy = nil
+			client.Transport = direct
+		} else {
+			client.Transport = &http.Transport{Proxy: nil}
+		}
+		retryReq, reqErr := newRequest()
+		if reqErr == nil {
+			resp, err = client.Do(retryReq)
+		}
+	}
 	if err != nil {
 		return actool.Errorf("请求失败: " + err.Error()), nil
 	}
@@ -456,12 +481,35 @@ func (s *Server) runHTTPTool(ctx context.Context, execRaw json.RawMessage, param
 	return actool.Text(actool.Capture(tc, string(b))), nil
 }
 
+func egressRetryableMethod(method string) bool {
+	switch strings.ToUpper(method) {
+	case http.MethodGet, http.MethodHead, http.MethodOptions, http.MethodTrace:
+		return true
+	default:
+		return false
+	}
+}
+
 // httpProxyTransport builds a Transport for the http tool's proxy config, or nil
 // (direct). use_recording_proxy routes through the recording proxy + trusts its CA.
 func (s *Server) httpProxyTransport(spec httpExec) *http.Transport {
 	proxyStr := strings.TrimSpace(spec.Proxy)
 	var caFile string
-	if spec.UseRecordingProxy {
+	mode := "proxy_fallback"
+	if s != nil && s.m != nil {
+		mode = s.m.EgressMode()
+	}
+	if mode == "direct" {
+		// Direct mode is an explicit override. Capture can still use the local
+		// MITM so traffic is recorded, but its upstream is direct.
+		proxyStr = ""
+	}
+	if mode == "force_proxy" && s != nil && s.m != nil && strings.TrimSpace(s.m.GlobalProxy()) != "" && !spec.UseRecordingProxy {
+		// Force mode also overrides a per-tool proxy when capture is off, so a
+		// custom tool cannot silently escape the configured global egress.
+		proxyStr = strings.TrimSpace(s.m.GlobalProxy())
+	}
+	if spec.UseRecordingProxy && mode != "direct" && s != nil && s.m != nil {
 		// ProxyAddr is already a complete URL while capture is enabled, and
 		// returns the configured global proxy URL when capture is off. Keep both
 		// forms intact (including socks5:// and credentials).
@@ -470,8 +518,17 @@ func (s *Server) httpProxyTransport(spec httpExec) *http.Transport {
 				proxyStr = addr
 				caFile = s.m.ProxyCACert()
 			}
-		} else if global := strings.TrimSpace(s.m.GlobalProxy()); global != "" {
-			proxyStr = global
+		} else if s.m.EgressMode() != "direct" {
+			global := strings.TrimSpace(s.m.GlobalProxy())
+			if global != "" {
+				proxyStr = global
+			}
+		}
+	}
+	if spec.UseRecordingProxy && mode == "direct" && s != nil && s.m != nil && s.m.TrafficEnabled() {
+		if addr := s.m.ProxyAddr(); addr != "" {
+			proxyStr = addr
+			caFile = s.m.ProxyCACert()
 		}
 	}
 	if proxyStr == "" {

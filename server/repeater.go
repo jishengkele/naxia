@@ -160,24 +160,10 @@ func (s *Server) sendRepeater(w http.ResponseWriter, r *http.Request) {
 	}
 
 	transport := s.repeaterTransport(useRecordingProxy, in.InsecureSkipVerify)
-	if in.HTTPVersion != "" {
-		tr := transport.(*http.Transport)
-		// Keep TLS ALPN consistent with the explicit protocol, even when an
-		// inherited transport previously advertised h2.
-		if tr.TLSClientConfig == nil {
-			tr.TLSClientConfig = &tls.Config{}
-		} else {
-			tr.TLSClientConfig = tr.TLSClientConfig.Clone()
-		}
-		tr.TLSClientConfig.NextProtos = []string{"http/1.1"}
-		if in.HTTPVersion == "HTTP/2.0" {
-			tr.TLSClientConfig.NextProtos = []string{"h2"}
-		}
-		tr.ForceAttemptHTTP2 = in.HTTPVersion == "HTTP/2.0"
-		tr.Protocols = new(http.Protocols)
-		tr.Protocols.SetHTTP1(in.HTTPVersion == "HTTP/1.1")
-		tr.Protocols.SetHTTP2(in.HTTPVersion == "HTTP/2.0")
-		tr.Protocols.SetUnencryptedHTTP2(in.HTTPVersion == "HTTP/2.0" && strings.EqualFold(u.Scheme, "http"))
+	configureRepeaterHTTPVersion(transport, u, in.HTTPVersion)
+	proxied := false
+	if tr, ok := transport.(*http.Transport); ok {
+		proxied = tr.Proxy != nil
 	}
 
 	client := &http.Client{
@@ -202,6 +188,23 @@ func (s *Server) sendRepeater(w http.ResponseWriter, r *http.Request) {
 
 	started := time.Now()
 	resp, err := client.Do(req)
+	if err != nil && proxied && s != nil && s.m != nil && s.m.EgressMode() == "proxy_fallback" && egressRetryableMethod(method) {
+		// Recreate the request body before retrying. The direct transport keeps
+		// the repeater's sensitive-address dial guard and bypasses inherited env
+		// proxies, so this is a real direct attempt.
+		client.CloseIdleConnections()
+		direct := s.repeaterTransport(false, in.InsecureSkipVerify)
+		configureRepeaterHTTPVersion(direct, u, in.HTTPVersion)
+		client.Transport = direct
+		retryReq := req.Clone(ctx)
+		if req.GetBody != nil {
+			if body, bodyErr := req.GetBody(); bodyErr == nil {
+				retryReq.Body = body
+				retryReq.GetBody = req.GetBody
+			}
+		}
+		resp, err = client.Do(retryReq)
+	}
 	if err != nil {
 		writeJSON(w, http.StatusOK, repeaterSendResponse{
 			Headers: map[string][]string{}, URL: u.String(),
@@ -233,6 +236,32 @@ func (s *Server) sendRepeater(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, out)
 }
 
+func configureRepeaterHTTPVersion(transport http.RoundTripper, u *url.URL, version string) {
+	if version == "" {
+		return
+	}
+	tr, ok := transport.(*http.Transport)
+	if !ok {
+		return
+	}
+	// Keep TLS ALPN consistent with the explicit protocol, even when an
+	// inherited transport previously advertised h2.
+	if tr.TLSClientConfig == nil {
+		tr.TLSClientConfig = &tls.Config{}
+	} else {
+		tr.TLSClientConfig = tr.TLSClientConfig.Clone()
+	}
+	tr.TLSClientConfig.NextProtos = []string{"http/1.1"}
+	if version == "HTTP/2.0" {
+		tr.TLSClientConfig.NextProtos = []string{"h2"}
+	}
+	tr.ForceAttemptHTTP2 = version == "HTTP/2.0"
+	tr.Protocols = new(http.Protocols)
+	tr.Protocols.SetHTTP1(version == "HTTP/1.1")
+	tr.Protocols.SetHTTP2(version == "HTTP/2.0")
+	tr.Protocols.SetUnencryptedHTTP2(version == "HTTP/2.0" && strings.EqualFold(u.Scheme, "http"))
+}
+
 // repeaterBodyText keeps the response preview as text for the MVP. Invalid
 // UTF-8 and NUL bytes are replaced so a binary response cannot inject control
 // characters into the JSON/UI raw view; the original bytes are not base64
@@ -249,7 +278,7 @@ func (s *Server) repeaterTransport(useRecordingProxy, insecure bool) http.RoundT
 		transport = s.httpProxyTransport(httpExec{UseRecordingProxy: true})
 		proxied = transport != nil
 	}
-	if transport == nil && s != nil && s.m != nil && strings.TrimSpace(s.m.GlobalProxy()) != "" {
+	if transport == nil && s != nil && s.m != nil && s.m.EgressMode() != "direct" && strings.TrimSpace(s.m.GlobalProxy()) != "" {
 		transport = s.httpProxyTransport(httpExec{Proxy: s.m.GlobalProxy()})
 		proxied = transport != nil
 	}

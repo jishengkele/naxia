@@ -21,6 +21,15 @@ import { useEgressIp } from "../../_components/egress-ip-banner";
 import { BasicAuthCard } from "./_components/basic-auth-card";
 import { UpdateCard } from "./_components/update-card";
 
+type EgressMode = "force_proxy" | "proxy_fallback" | "direct";
+
+function egressModeStatus(mode: EgressMode, hasProxy: boolean) {
+  if (mode === "direct") return "当前为强制直连 · 不使用全局代理";
+  if (!hasProxy) return "未配置全局代理 · 目标流量直连出网";
+  if (mode === "force_proxy") return "当前为强制代理 · 代理不可用时请求阻断";
+  return "当前为代理优先 · 代理失败时回退直连";
+}
+
 export default function SystemSettingsPage() {
   const [credentialAgent, setCredentialAgent] = React.useState(false);
   const [credentialBinding, setCredentialBinding] = React.useState(false);
@@ -41,6 +50,7 @@ export default function SystemSettingsPage() {
   const [proxyInput, setProxyInput] = React.useState("");
   const [savingProxy, setSavingProxy] = React.useState(false);
   const [globalProxyInput, setGlobalProxyInput] = React.useState("");
+  const [egressMode, setEgressMode] = React.useState<EgressMode>("proxy_fallback");
   const [savingGlobalProxy, setSavingGlobalProxy] = React.useState(false);
   const [savingEgressVisibility, setSavingEgressVisibility] = React.useState(false);
   // 出口探测：测一次真实请求，拿到"直连 / 经全局代理"两条出口 IP。
@@ -95,6 +105,7 @@ export default function SystemSettingsPage() {
     setProxyInput(s.web_search_proxy ?? "");
     const savedProxy = s.global_proxy ?? "";
     setGlobalProxyInput(savedProxy);
+    setEgressMode(s.egress_mode ?? "proxy_fallback");
     setPyInterp(s.python_interpreter ?? "");
     setWorkers(String(s.workers ?? 3));
     setWorkerPools(s.worker_pools ?? []);
@@ -348,6 +359,10 @@ export default function SystemSettingsPage() {
       .finally(() => setSavingGlobalProxy(false));
   };
 
+  const saveEgressMode = (value: EgressMode) => {
+    api.setSettings({ egress_mode: value }).then(apply).catch((e) => toast.error(`保存失败：${(e as Error).message}`));
+  };
+
   // 测表单里当前的值，不要求先保存；后端返回直连 / 经代理两条。
   const testEgress = () => {
     const seq = egressSeq.current.begin();
@@ -504,10 +519,10 @@ export default function SystemSettingsPage() {
               全局代理
             </CardTitle>
             <CardDescription>
-              所有 Agent 的<b>目标流量</b>经此代理出网（隐藏源 IP / 走跳板）。支持 <b>http / https / socks5</b>，可带{" "}
+              所有 Agent 的<b>目标流量</b>按下方出口策略处理。支持 <b>http / https / socks5</b>，可带{" "}
               <code>user:pass</code> 认证。留空=直连。
               <br />
-              开启<b>流量捕获</b>时，它作为记录代理的<b>上游</b>（流量仍全量落库，再经此代理出网）；关闭捕获时，直接注入
+              开启<b>流量捕获</b>时，它按出口策略作为记录代理的<b>上游</b>；关闭捕获时，直接注入
               Agent 的 bash / WebFetch 出网。与网络搜索代理、LLM 代理相互独立。
               <br />
               <b>提示</b>：socks5 在<b>关闭捕获</b>时依赖各命令行工具对 <code>ALL_PROXY</code> 的支持——curl
@@ -547,7 +562,21 @@ export default function SystemSettingsPage() {
               </Button>
             </div>
             <p className="text-muted-foreground text-xs">
-              {globalProxyInput.trim() ? "已配置 · 所有目标流量经此代理出网" : "未配置 · 目标流量直连出网"}
+              {egressModeStatus(egressMode, Boolean(globalProxyInput.trim()))}
+            </p>
+            <div className="flex flex-wrap items-center gap-2">
+              <Label htmlFor="egress-mode" className="text-sm font-normal text-muted-foreground">出口策略</Label>
+              <Select value={egressMode} onValueChange={(v) => saveEgressMode(v as typeof egressMode)}>
+                <SelectTrigger id="egress-mode" className="w-56"><SelectValue /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="force_proxy">强制代理（失败即阻断）</SelectItem>
+                  <SelectItem value="proxy_fallback">代理优先，失败后直连</SelectItem>
+                  <SelectItem value="direct">强制直连</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+            <p className="text-muted-foreground text-xs">
+              代理优先模式只对可安全重试的内置 HTTP 请求自动回退直连，避免重复提交带副作用的请求。
             </p>
             <div className="flex items-center justify-between gap-4 rounded-md border px-3 py-2">
               <div className="min-w-0">

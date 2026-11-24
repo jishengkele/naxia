@@ -255,11 +255,10 @@ type Manager struct {
 	braveKey         string
 	tavilyKey        string
 	webSearchProxy   string
-	// globalProxy is the egress proxy all target traffic routes through
-	// (http/https/socks5, optional user:pass). Empty = direct. When traffic
-	// capture is on it becomes the MITM's upstream; when capture is off it is
-	// injected into agent bash env / WebFetch directly. See ProxyAddr.
+	// globalProxy is the configured egress proxy. Its effective behavior is
+	// controlled by egressMode. See ProxyAddr.
 	globalProxy string
+	egressMode  string
 }
 
 // Settings keys the UI toggles at runtime.
@@ -275,6 +274,7 @@ const (
 	// (http/https/socks5). Empty = direct. Distinct from web_search_proxy (which
 	// only routes the search backend) and the per-profile LLM proxy.
 	settingGlobalProxy  = "global_proxy"
+	settingEgressMode   = "egress_mode"
 	settingShowEgressIP = "show_egress_ip"
 	settingWorkers      = "workers"
 	settingWorkerPools  = "worker_pools"
@@ -612,8 +612,24 @@ func NewManager(dir, proxyAddr string) (*Manager, error) {
 	if v, ok, _ := pg.GetSetting(settingGlobalProxy); ok {
 		m.globalProxy = strings.TrimSpace(v)
 	}
+	if v, ok, _ := pg.GetSetting(settingEgressMode); ok {
+		m.egressMode = normalizeEgressMode(v)
+	} else {
+		m.egressMode = "proxy_fallback"
+	}
+	if m.egressMode == "force_proxy" && m.globalProxy == "" {
+		log.Printf("[proxy] 已保存的强制代理模式没有全局代理，回退到代理优先模式")
+		m.egressMode = "proxy_fallback"
+		if err := pg.SetSetting(settingEgressMode, m.egressMode); err != nil {
+			log.Printf("[proxy] 保存回退后的出口策略失败: %v", err)
+		}
+	}
 	if m.traffic != nil {
-		if err := m.traffic.SetUpstreamProxy(m.globalProxy); err != nil {
+		upstream := m.globalProxy
+		if m.egressMode == "direct" {
+			upstream = ""
+		}
+		if err := m.traffic.SetUpstreamProxy(upstream); err != nil {
 			log.Printf("[proxy] 全局代理 %q 无效，已忽略: %v", m.globalProxy, err)
 		}
 	}
@@ -811,9 +827,9 @@ func (m *Manager) SetWebSearch(on bool, backend string, braveKey, tavilyKey, pro
 const browserMCPName = "browser"
 
 // syncBrowserMCPProxy reconciles the seeded browser MCP's proxy args + CA env with
-// the current traffic-capture state: capture on → route Playwright through the
-// recording proxy (--proxy-server) and trust its MITM CA (NODE_EXTRA_CA_CERTS);
-// capture off → strip both. Idempotent, and a no-op if the user deleted/renamed the
+// the current egress state: capture on → route through the recording MITM and
+// trust its CA, capture off → use the configured global proxy directly, and direct
+// mode → strip the proxy. Idempotent, and a no-op if the user deleted/renamed the
 // MCP. Must be called WITHOUT m.mu held (ProxyAddr/ProxyCACert take the lock).
 func (m *Manager) syncBrowserMCPProxy() {
 	servers, err := m.pg.ListMCP()
@@ -919,13 +935,16 @@ func (m *Manager) Traffic() *traffic.Traffic { return m.traffic }
 //   - capture ON  → the recording MITM proxy (which itself exits via the global
 //     proxy when one is set); agents also get its CA (see ProxyCACert).
 //   - capture OFF → the global egress proxy directly (empty CA — real target
-//     certs), or "" when no global proxy is set (direct, no recording).
+//     certs), or "" when the selected mode forces direct access.
 //
-// So the global proxy takes effect in both modes: at the MITM's upstream when
-// capturing, in the agent's own bash env / WebFetch when not.
+// In proxy modes the global proxy takes effect at the MITM's upstream when
+// capturing, and in the agent's own bash env / WebFetch when capture is off.
 func (m *Manager) ProxyAddr() string {
 	if m.traffic != nil && m.TrafficEnabled() {
 		return m.traffic.ProxyAddr()
+	}
+	if m.EgressMode() == "direct" {
+		return ""
 	}
 	m.mu.RLock()
 	defer m.mu.RUnlock()
@@ -951,12 +970,57 @@ func (m *Manager) GlobalProxy() string {
 	return m.globalProxy
 }
 
+func normalizeEgressMode(v string) string {
+	switch strings.TrimSpace(strings.ToLower(v)) {
+	case "force_proxy", "proxy_fallback", "direct":
+		return strings.TrimSpace(strings.ToLower(v))
+	default:
+		return "proxy_fallback"
+	}
+}
+
+func (m *Manager) EgressMode() string {
+	m.mu.RLock()
+	defer m.mu.RUnlock()
+	return normalizeEgressMode(m.egressMode)
+}
+
+func (m *Manager) SetEgressMode(mode string) error {
+	mode = strings.TrimSpace(strings.ToLower(mode))
+	if mode != "force_proxy" && mode != "proxy_fallback" && mode != "direct" {
+		return fmt.Errorf("egress_mode 必须是 force_proxy、proxy_fallback 或 direct")
+	}
+	if mode == "force_proxy" && strings.TrimSpace(m.GlobalProxy()) == "" {
+		return fmt.Errorf("强制代理模式需要先配置全局代理")
+	}
+	if err := m.pg.SetSetting(settingEgressMode, mode); err != nil {
+		return err
+	}
+	m.mu.Lock()
+	m.egressMode = mode
+	m.mu.Unlock()
+	if m.traffic != nil {
+		upstream := m.GlobalProxy()
+		if mode == "direct" {
+			upstream = ""
+		}
+		if err := m.traffic.SetUpstreamProxy(upstream); err != nil {
+			return err
+		}
+	}
+	m.syncBrowserMCPProxy()
+	return nil
+}
+
 // SetGlobalProxy validates, persists and applies the global egress proxy
 // (http/https/socks5, optional user:pass; empty = direct). It updates the MITM's
 // upstream immediately; callers must rebuild agents (applyLLM) afterwards so the
 // capture-off path (bash env / WebFetch) picks up the change too.
 func (m *Manager) SetGlobalProxy(raw string) error {
 	raw = strings.TrimSpace(raw)
+	if m.EgressMode() == "force_proxy" && raw == "" {
+		return fmt.Errorf("强制代理模式不能清空全局代理")
+	}
 	if raw != "" {
 		if _, err := traffic.ValidateProxyURL(raw); err != nil {
 			return err
@@ -969,7 +1033,11 @@ func (m *Manager) SetGlobalProxy(raw string) error {
 	m.globalProxy = raw
 	m.mu.Unlock()
 	if m.traffic != nil {
-		if err := m.traffic.SetUpstreamProxy(raw); err != nil {
+		upstream := raw
+		if m.EgressMode() == "direct" {
+			upstream = ""
+		}
+		if err := m.traffic.SetUpstreamProxy(upstream); err != nil {
 			return err
 		}
 	}

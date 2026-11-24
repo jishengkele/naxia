@@ -200,7 +200,8 @@ func (w *Worker) SetWebSearch(o WebSearchOpts) { w.webSearch = o }
 // GIT_SSL_CAINFO→git, NODE_EXTRA_CA_CERTS→node; NODE_USE_ENV_PROXY makes Node 24+
 // honor the proxy vars. ALL_PROXY is set too so a socks5 egress proxy (which curl
 // only reads from ALL_PROXY, not HTTP(S)_PROXY) works in the capture-off path.
-// Empty proxyAddr → nil (direct, unchanged env).
+// Empty proxyAddr → nil. Runtime agent construction uses proxyEnvForEgress so
+// direct mode also clears inherited proxy variables.
 func proxyEnv(proxyAddr, caCert string) []string {
 	if proxyAddr == "" {
 		return nil
@@ -209,6 +210,7 @@ func proxyEnv(proxyAddr, caCert string) []string {
 		"HTTP_PROXY=" + proxyAddr, "HTTPS_PROXY=" + proxyAddr,
 		"http_proxy=" + proxyAddr, "https_proxy=" + proxyAddr,
 		"ALL_PROXY=" + proxyAddr, "all_proxy=" + proxyAddr, // socks5 egress: curl reads only this
+		"NO_PROXY=", "no_proxy=", // global egress must not inherit a bypass list
 		"NODE_USE_ENV_PROXY=1", // Node 24+: honor HTTP(S)_PROXY in built-in fetch/http
 	}
 	if caCert != "" {
@@ -221,6 +223,20 @@ func proxyEnv(proxyAddr, caCert string) []string {
 		)
 	}
 	return env
+}
+
+// proxyEnvForEgress makes the direct mode explicit too. A nil BashEnv would
+// inherit HTTP_PROXY from the server process, which would violate the platform
+// setting when the host happens to have a system proxy configured.
+func proxyEnvForEgress(proxyAddr, caCert string) []string {
+	if proxyAddr == "" {
+		return []string{
+			"HTTP_PROXY=", "HTTPS_PROXY=", "http_proxy=", "https_proxy=",
+			"ALL_PROXY=", "all_proxy=", "NO_PROXY=", "no_proxy=",
+			"NODE_USE_ENV_PROXY=0",
+		}
+	}
+	return proxyEnv(proxyAddr, caCert)
 }
 
 // workerDefaultTmpl is the built-in EDITABLE body (段 [A]) of the worker system
@@ -450,7 +466,7 @@ func (w *Worker) execute(ctx context.Context, name string, taskID int64, as *db.
 		DeepSeekSearchModel:   w.webSearch.DeepSeekModel,
 		WebSearchProxy:        w.webSearch.Proxy,
 		// Bash 子命令的 HTTP 默认走记录代理 + 信任其 CA（工具无需 -x/-k）。
-		BashEnv:    proxyEnv(w.proxyAddr, w.proxyCACert),
+		BashEnv:    proxyEnvForEgress(w.proxyAddr, w.proxyCACert),
 		WorkingDir: runDir,
 		MaxTurns:   w.maxTurns, // 0 = unlimited (configurable in agent management)
 		// 墙钟预算,轮边界判,不打断半路;0 = 不限。有任务级 deadline 时夹逼到 min(自身预算,

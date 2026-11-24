@@ -3492,7 +3492,8 @@ func (s *Server) settingsPayload() map[string]any {
 		"brave_key_set":             strings.TrimSpace(braveKey) != "",
 		"tavily_key_set":            strings.TrimSpace(tavilyKey) != "",
 		"web_search_proxy":          proxy,             // 独立出口代理(http/https/socks5)，空=直连
-		"global_proxy":              s.m.GlobalProxy(), // 全局出口代理(http/https/socks5)，所有目标流量走它，空=直连
+		"global_proxy":              s.m.GlobalProxy(), // 全局出口代理(http/https/socks5)，实际是否使用由 egress_mode 决定
+		"egress_mode":               s.m.EgressMode(),
 		"show_egress_ip":            s.m.pg.GetBool(settingShowEgressIP, false),
 		"python_interpreter":        strings.TrimSpace(pyStored), // 用户/自动设的值(空=用运行时检测)
 		"workers":                   s.m.Workers(),               // 并发工作 agent 数(默认3)；对之后启动的任务生效
@@ -3570,8 +3571,9 @@ func (s *Server) putSettings(w http.ResponseWriter, r *http.Request) {
 		WebSearchBackend *string       `json:"web_search_backend"`
 		BraveKey         *string       `json:"brave_search_api_key"`
 		TavilyKey        *string       `json:"tavily_search_api_key"`
-		WebSearchProxy   *string       `json:"web_search_proxy"`   // 独立出口代理(http/https/socks5)；null=不改，""=清空
-		GlobalProxy      *string       `json:"global_proxy"`       // 全局出口代理(http/https/socks5)；null=不改，""=清空(直连)
+		WebSearchProxy   *string       `json:"web_search_proxy"` // 独立出口代理(http/https/socks5)；null=不改，""=清空
+		GlobalProxy      *string       `json:"global_proxy"`     // 全局出口代理(http/https/socks5)；null=不改，""=清空(直连)
+		EgressMode       *string       `json:"egress_mode"`
 		ShowEgressIP     *bool         `json:"show_egress_ip"`     // 在顶栏显示直连/全局代理出口 IP；默认关
 		PythonInterp     *string       `json:"python_interpreter"` // 自定义脚本工具的 python 解释器路径
 		Workers          *int          `json:"workers"`            // 并发工作 agent 数(>0)；对之后启动的任务生效
@@ -3766,6 +3768,13 @@ func (s *Server) putSettings(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		changed = true // capture-off egress is baked into agents at build time → rebuild
+	}
+	if req.EgressMode != nil {
+		if err := s.m.SetEgressMode(*req.EgressMode); err != nil {
+			writeErr(w, 400, err.Error())
+			return
+		}
+		changed = true
 	}
 	if req.ShowEgressIP != nil {
 		if err := s.m.pg.SetBool(settingShowEgressIP, *req.ShowEgressIP); err != nil {
