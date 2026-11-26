@@ -173,6 +173,14 @@ func TestDeepenFindingCreatesAuditedIntentAndRevivesTask(t *testing.T) {
 		t.Fatal(err)
 	}
 
+	// deepen 的复活会走任务准入；本用例只验证"复活任务 + 写审计意图"，不验证排队，
+	// 所以显式关掉任务并发上限（其默认值已随小机器口径改为开启）。
+	restoreConcurrency := restoreConcurrencySetting(t, m)
+	defer restoreConcurrency()
+	if err := m.SetConcurrency(false, defaultConcurrencyLimit); err != nil {
+		t.Fatal(err)
+	}
+
 	ctx, cancel := context.WithCancel(context.Background())
 	cancel() // admission is exercised without starting background planner/worker work
 	s := &Server{m: m, engine: NewEngine(m), ctx: ctx}

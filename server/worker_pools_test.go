@@ -24,8 +24,9 @@ func TestExpandWorkerSlotsLegacy(t *testing.T) {
 		want  int
 	}{
 		{"configured", 2, 2},
-		{"zero defaults", 0, 3},
-		{"negative defaults", -1, 3},
+		// 默认值随宿主机口径调整（2C2G → 2），断言跟着常量走，避免以后调默认就红。
+		{"zero defaults", 0, defaultWorkers},
+		{"negative defaults", -1, defaultWorkers},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			slots, err := ExpandWorkerSlots(nil, tc.count)
