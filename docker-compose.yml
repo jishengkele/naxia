@@ -1,6 +1,13 @@
+x-logging: &container-logging
+  driver: json-file
+  options:
+    max-size: "50m"
+    max-file: "3"
+
 services:
   postgres:
     image: postgres:16-alpine
+    logging: *container-logging
     environment:
       POSTGRES_USER: ${POSTGRES_USER:-artex}
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?请在 .env 设置 POSTGRES_PASSWORD}
@@ -16,6 +23,7 @@ services:
 
   artex:
     image: ${ARTEX_IMAGE:-ghcr.io/jishengkele/naxia}:${ARTEX_TAG:-latest}
+    logging: *container-logging
     depends_on:
       postgres:
         condition: service_healthy

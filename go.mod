@@ -3,19 +3,20 @@ module github.com/Autumn-27/artex
 go 1.26.10
 
 require (
-	mvdan.cc/sh/v3 v3.10.0
 	github.com/Autumn-27/norma v0.4.3
 	github.com/golang-jwt/jwt/v5 v5.3.1
 	github.com/google/uuid v1.6.0
 	github.com/jackc/pgx/v5 v5.10.0
 	github.com/klauspost/compress v1.18.6
-	github.com/lqqyt2423/go-mitmproxy v1.9.2
+	github.com/lqqyt2423/go-mitmproxy v1.9.4
 	github.com/miekg/dns v1.1.72
 	github.com/projectdiscovery/dnsx v1.2.3
-	golang.org/x/crypto v0.55.0
-	golang.org/x/net v0.58.0
-	golang.org/x/text v0.41.0
+	golang.org/x/crypto v0.58.0
+	golang.org/x/net v0.61.0
+	golang.org/x/sys v0.49.0
+	golang.org/x/text v0.43.0
 	modernc.org/sqlite v1.52.0
+	mvdan.cc/sh/v3 v3.10.0
 )
 
 require (
@@ -32,7 +33,6 @@ require (
 	github.com/jackc/pgpassfile v1.0.0 // indirect
 	github.com/jackc/pgservicefile v0.0.0-20240606120523-5a60cdf6a761 // indirect
 	github.com/jackc/puddle/v2 v2.2.2 // indirect
-	github.com/kr/pretty v0.3.1 // indirect
 	github.com/mattn/go-isatty v0.0.20 // indirect
 	github.com/microcosm-cc/bluemonday v1.0.27 // indirect
 	github.com/ncruces/go-strftime v1.0.0 // indirect
@@ -43,19 +43,16 @@ require (
 	github.com/projectdiscovery/utils v0.7.3 // indirect
 	github.com/remyoudompheng/bigfft v0.0.0-20230129092748-24d4a6f8daec // indirect
 	github.com/saintfish/chardet v0.0.0-20230101081208-5e3ef4b5456d // indirect
-	github.com/satori/go.uuid v1.2.0 // indirect
 	github.com/sirupsen/logrus v1.9.4 // indirect
 	github.com/tidwall/gjson v1.18.0 // indirect
 	github.com/tidwall/match v1.2.0 // indirect
 	github.com/tidwall/pretty v1.2.1 // indirect
 	github.com/weppos/publicsuffix-go v0.40.3-0.20250408071509-6074bbe7fd39 // indirect
-	go.uber.org/atomic v1.11.0 // indirect
 	go.uber.org/multierr v1.11.0 // indirect
 	golang.org/x/exp v0.0.0-20250106191152-7588d65b2ba8 // indirect
-	golang.org/x/mod v0.40.0 // indirect
-	golang.org/x/sync v0.22.0 // indirect
-	golang.org/x/sys v0.47.0 // indirect
-	golang.org/x/tools v0.49.0 // indirect
+	golang.org/x/mod v0.41.0 // indirect
+	golang.org/x/sync v0.24.0 // indirect
+	golang.org/x/tools v0.51.0 // indirect
 	gopkg.in/yaml.v3 v3.0.1 // indirect
 	modernc.org/libc v1.72.3 // indirect
 	modernc.org/mathutil v1.7.1 // indirect
