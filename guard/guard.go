@@ -131,7 +131,9 @@ func (g *Guard) enforceProxyOnly(tool, cmd string) (hook.Result, bool) {
 	}
 	name := strings.ToLower(m[1])
 	reason := systemBlockMessage("当前是「强制全局代理」模式，而 " + name +
-		" 直接开 socket 出网、不读取 HTTP_PROXY/ALL_PROXY，会从本机真实 IP 直连，属于出口泄漏")
+		" 直接开 socket 出网、不读取 HTTP_PROXY/ALL_PROXY，会从本机真实 IP 直连，属于出口泄漏。" +
+		"请改用会走代理的等效做法（curl / wget / httpx / nuclei / ffuf / sqlmap / python-requests），" +
+		"或给命令显式指定代理（如 nmap --proxies socks4://127.0.0.1:8788、proxychains " + name + " …）后再试")
 	g.record(tool, "block", "强制代理下拦截直连工具: "+name, cmd)
 	return hook.Result{Decision: "block", Message: reason}, true
 }
