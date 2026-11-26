@@ -456,6 +456,18 @@ server {
 
 仓库内提供可直接套用的反代模板 [`deploy/nginx-naxia.conf`](deploy/nginx-naxia.conf)：已包含 SSE 关缓冲、`/ → /login` 兜底、200M 上传上限与 443 跳转的注释说明。
 
+### 部署后收尾（一条命令）
+
+新机器把服务起来之后，跑一次 [`deploy/post-deploy.sh`](deploy/post-deploy.sh) 补齐 2C2G 口径的运行设置并验收（幂等，重复跑安全）：
+
+```bash
+NAXIA_PASS='你的后台密码' bash deploy/post-deploy.sh
+```
+
+它会：等健康检查 → 登录 → 写入 `workers=2`、任务并发上限 2、LLM 轮询开启、任务情报开启 → 若已配 LLM 则同时打开 fallback judge 与 `browser` MCP → 打印设置/模板/agent/容器工具的验收结果。
+
+> 有意没做的：LLM 配置、全局出口代理、域名与证书——这三件必须人工按环境填。
+
 ### 开箱默认值（2C2G 口径）
 
 默认值是按"2 vCPU / 2 GiB 内存的云主机"选的，全新部署后不需要再逐项调参：

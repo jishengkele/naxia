@@ -252,6 +252,16 @@ ON CONFLICT (agent_id, var_name) DO UPDATE
 		}
 		_ = d.SetSetting("interactive_shell_default_v1", "true")
 	}
+	// pentest 的种子 run_seconds 从 0（不限时）改成 1800。ON CONFLICT 只更新
+	// name/description，老库那一行不会被改到——旧部署会一直保留"不限时"，
+	// 单会话可能跑很久。这里补一次迁移：只把仍是 0（旧默认）的行改掉，
+	// 用户显式设过的其它值不碰。
+	if v, _, _ := d.GetSetting("agent_pentest_run_seconds_v1"); v != "done" {
+		if _, err := d.Exec(`UPDATE agents SET run_seconds=1800 WHERE key='pentest' AND COALESCE(run_seconds,0)=0`); err != nil {
+			return fmt.Errorf("migrate pentest run_seconds: %w", err)
+		}
+		_ = d.SetSetting("agent_pentest_run_seconds_v1", "done")
+	}
 	// Seed the built-in browser (Playwright) MCP once — DISABLED by default (用户
 	// 需要时自行启用), no proxy by default. The traffic-capture toggle injects/strips
 	// the recording proxy + CA at runtime (server.Manager.syncBrowserMCPProxy).
