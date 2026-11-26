@@ -106,14 +106,16 @@ type RetryConfig struct {
 // threshold math (window − summary reserve − buffer) would go non-positive and
 // compaction would fire every turn; above the cap it would never fire.
 const (
-	defaultWindowK = 200  // unset → assume a 200K window (Claude default)
+	defaultWindowK = 128  // unset → assume a 128K window (flash-class endpoints)
 	minWindowK     = 32   // floor so effectiveWindow stays comfortably positive
 	maxWindowK     = 1000 // cap at 1M tokens (user request)
 )
 
 // CompactionWindow returns the model context window in TOKENS for compaction
 // thresholds, resolved from the user-configured size (ContextWindowK). 0/unset →
-// a 200K default; otherwise clamped to [32K, 1M] so compaction stays effective.
+// a 128K default (conservative for flash-class endpoints: overshooting the real
+// window means compaction never fires and the run dies with a context-length
+// error); otherwise clamped to [32K, 1M] so compaction stays effective.
 func (c Config) CompactionWindow() int {
 	k := c.ContextWindowK
 	if k <= 0 {

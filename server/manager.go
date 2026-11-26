@@ -298,10 +298,12 @@ const (
 	// key, so it only works on an anthropic-format profile pointed at DeepSeek.
 	deepSeekWebSearchBackend = "deepseek"
 	// defaultWorkers is the concurrent work-agent count when the setting is unset.
-	defaultWorkers = 3
+	// 2 是面向 2C2G 小机器（本项目生产宿主机口径）的默认值：1 个 planner + 2 个
+	// worker 已是这档内存的实际上限，再多会在工具子进程/浏览器上 OOM。
+	defaultWorkers = 2
 	// defaultConcurrencyLimit is the simultaneous-running-task cap when the feature
 	// is enabled but no explicit limit was saved.
-	defaultConcurrencyLimit = 5
+	defaultConcurrencyLimit = 2
 )
 
 // WorkerPool binds a number of worker slots to one LLM profile. Profile IDs are
@@ -401,10 +403,15 @@ func ExpandWorkerSlots(pools []WorkerPool, legacy int) ([]WorkerSlot, error) {
 }
 
 // ConcurrencyLimit returns whether the simultaneous-running-task cap is enabled and
-// its limit (default 5 when enabled but unset). limit is always >=1 when enabled.
+// its limit (default 2 when enabled but unset). limit is always >=1 when enabled.
+//
+// The cap is ON unless it was explicitly switched off: a fresh install lands on a
+// 2C2G-class box, where two concurrent tasks (2 workers each + PostgreSQL) already
+// exhaust memory — OOM-killing the engine mid-run is worse than queueing. Saving
+// the setting from the UI stores an explicit true/false, which then takes over.
 func (m *Manager) ConcurrencyLimit() (enabled bool, limit int) {
 	on, _, _ := m.pg.GetSetting(settingConcurrencyOn)
-	if strings.TrimSpace(on) != "true" {
+	if strings.TrimSpace(on) == "false" {
 		return false, 0
 	}
 	limit = defaultConcurrencyLimit
@@ -699,14 +706,16 @@ func (m *Manager) SetNoaCompaction(on bool) error {
 	return m.pg.SetBool(settingNoaCompaction, on)
 }
 
-// LLMPoolEnabled reports whether LLM failover ("轮询") is on (默认关；
-// settings.llm_pool_enabled). Read when the provider chain is built (applyLLM),
-// so a change requires a rebuild — putSettings does that.
+// LLMPoolEnabled reports whether LLM failover ("轮询") is on（默认开；
+// settings.llm_pool_enabled）。只配了一个 profile 时链上只有它，开关无害；
+// 配了两个以上时能自动跳过余额耗尽/被限流的配置，比"整任务失败"更划算。
+// Read when the provider chain is built (applyLLM), so a change requires a
+// rebuild — putSettings does that.
 func (m *Manager) LLMPoolEnabled() bool {
 	if m.pg == nil {
 		return false
 	}
-	return m.pg.GetBool(settingLLMPoolOn, false)
+	return m.pg.GetBool(settingLLMPoolOn, true)
 }
 
 // SetLLMPoolEnabled persists the failover toggle. Callers rebuild agents

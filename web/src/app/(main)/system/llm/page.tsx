@@ -341,21 +341,23 @@ function ProfileSheet({
   // 就是一次干净的开始，不会留下上一个配置的残影。
   React.useEffect(() => {
     if (!open) return;
+    // 新建配置时预填一组"小机器也能跑"的默认值：2C2G 上 6 个在飞请求、120 rpm、
+    // 128K 窗口、8192 输出上限已经是安全上限；编辑已有配置则原样回显其存储值。
     setName(profile?.name ?? "");
     setFormat(profile?.format === "openai" || profile?.format === "openai-responses" ? profile.format : "anthropic");
     setModel(profile?.model ?? "");
     setBaseUrl(profile?.base_url ?? "");
     setProxy(profile?.proxy ?? "");
     setRps(String(profile?.rate_per_second ?? 0));
-    setRpm(String(profile?.rate_per_minute ?? 0));
-    setMaxConcurrency(String(profile?.max_concurrency ?? 0));
-    setCw(String(profile?.context_window_k ?? 0));
+    setRpm(String(profile ? (profile.rate_per_minute ?? 0) : 120));
+    setMaxConcurrency(String(profile ? (profile.max_concurrency ?? 0) : 6));
+    setCw(String(profile ? (profile.context_window_k ?? 0) : 128));
     setThinkingType(fromStore(profile?.thinking_type));
     setEffort(fromStore(profile?.reasoning_effort));
     setPriority(String(profile?.priority ?? 0));
     setPoolExclude(profile?.pool_exclude ?? false);
     setStreaming(profile?.streaming ?? true);
-    setMaxTokens(String(profile?.max_tokens ?? 0));
+    setMaxTokens(String(profile ? (profile.max_tokens ?? 0) : 8192));
     setMaxTokensField(fromStore(profile?.max_tokens_field));
     setSessionHeaderKey(profile?.session_header_key ?? "");
     setRetry(profile?.retry ?? ZERO_OVERRIDE);

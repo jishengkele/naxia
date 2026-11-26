@@ -489,9 +489,10 @@ func (n *Notifier) takeTokens(channelID int64, ratePerMin, want int, now time.Ti
 	return take
 }
 
-// enabled 读取总开关。
+// enabled 读取总开关。默认关：新部署没有配置任何渠道，开着只会空转；
+// 配好渠道后由设置页显式打开（保存过一次就成了显式值）。
 func (n *Notifier) enabled() bool {
-	return n.pg.GetBool(settingNotifyEnabled, true)
+	return n.pg.GetBool(settingNotifyEnabled, false)
 }
 
 // publicBaseURL 返回回链用的外部地址，去掉尾部斜杠。
