@@ -27,7 +27,17 @@ const judgeWorkerLane = "judge"
 // chatGuard returns a guard wired with the manager's interceptor, used for chat
 // conversations. Called once per applyLLM so a new LLM config always gets a fresh guard.
 func (s *Server) chatGuard() *guard.Guard {
-	return guard.NewWithInterceptor(s.m.interceptor)
+	return newTaskGuard(s.m.interceptor, s.m.ForceProxyOnly)
+}
+
+// newTaskGuard builds a guard with the manager's intercept rules AND the
+// force-proxy gate. Every agent that can reach Bash goes through this: with
+// "force all egress through the global proxy" on, a raw socket tool would
+// otherwise scan straight out of the host's own IP.
+func newTaskGuard(ic *intercept.Interceptor, forceProxy func() bool) *guard.Guard {
+	g := guard.NewWithInterceptor(ic)
+	g.SetForceProxy(forceProxy)
+	return g
 }
 
 // wireInterceptReviewer installs the LLM fallback judge into the interceptor. The

@@ -994,6 +994,17 @@ func (m *Manager) EgressMode() string {
 	return normalizeEgressMode(m.egressMode)
 }
 
+// ForceProxyOnly reports whether the current egress policy requires every
+// outbound connection to leave through the global proxy. The guard uses it to
+// refuse raw-socket tools (nmap/masscan/hydra/nc/dig/...) that ignore the
+// injected *_PROXY variables and would therefore leak the host's real IP.
+func (m *Manager) ForceProxyOnly() bool {
+	if m == nil {
+		return false
+	}
+	return m.EgressMode() == "force_proxy"
+}
+
 func (m *Manager) SetEgressMode(mode string) error {
 	mode = strings.TrimSpace(strings.ToLower(mode))
 	if mode != "force_proxy" && mode != "proxy_fallback" && mode != "direct" {
@@ -1083,7 +1094,7 @@ func unixNanoOrZero(t *time.Time) int64 {
 	return t.UnixNano()
 }
 
-func taskFromPG(pt *pgdb.Task, store *pgdb.ExplorationStore, ic *intercept.Interceptor) *Task {
+func taskFromPG(pt *pgdb.Task, store *pgdb.ExplorationStore, ic *intercept.Interceptor, forceProxy func() bool) *Task {
 	return &Task{
 		ID: strconv.FormatInt(pt.ID, 10), ExpID: pt.ExplorationID,
 		Name:       pt.Name,
@@ -1103,7 +1114,7 @@ func taskFromPG(pt *pgdb.Task, store *pgdb.ExplorationStore, ic *intercept.Inter
 		CoverageEnabled: pt.CoverageEnabled, WorkerCount: pt.WorkerCount,
 		FirstRunAt: unixOrZero(pt.FirstRunAt), DeadlineAt: unixOrZero(pt.DeadlineAt),
 		ActiveRunSeconds: pt.ActiveRunSeconds, RunSegmentStartedAt: unixOrZero(pt.RunSegmentStartedAt),
-		Store: store, Guard: guard.NewWithInterceptor(ic), notify: make(chan struct{}, 1),
+		Store: store, Guard: newTaskGuard(ic, forceProxy), notify: make(chan struct{}, 1),
 	}
 }
 
@@ -1155,7 +1166,7 @@ func (m *Manager) CreateTaskWithOptions(description, goal string, opts pgdb.Task
 	if err != nil {
 		return nil, err
 	}
-	t := taskFromPG(pt, m.pg.Exploration(pt.ExplorationID), m.interceptor)
+	t := taskFromPG(pt, m.pg.Exploration(pt.ExplorationID), m.interceptor, m.ForceProxyOnly)
 	m.mu.Lock()
 	m.tasks[t.ID] = t
 	m.active = t.ID
@@ -1354,7 +1365,7 @@ func (m *Manager) LoadExisting() []*Task {
 		if _, ok := m.tasks[id]; ok {
 			continue
 		}
-		t := taskFromPG(pt, m.pg.Exploration(pt.ExplorationID), m.interceptor)
+		t := taskFromPG(pt, m.pg.Exploration(pt.ExplorationID), m.interceptor, m.ForceProxyOnly)
 		m.tasks[id] = t
 		loaded = append(loaded, t)
 	}

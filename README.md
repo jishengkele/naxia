@@ -491,6 +491,24 @@ NAXIA_PASS='你的后台密码' bash deploy/post-deploy.sh
 2. **全局出口代理**（可选）：目标流量走代理时在「系统配置」里填；
 3. **域名与证书**：反代 + `certbot`。
 
+### 出口策略：`force_proxy` / `proxy_fallback` / `direct`
+
+「系统配置 → 全局出口代理」旁边的模式开关决定目标流量怎么出网：
+
+| 模式 | 行为 |
+| --- | --- |
+| `direct` | 不走代理，直连目标（默认） |
+| `proxy_fallback` | 优先走代理，代理不可用时回落直连 |
+| `force_proxy` | 强制走代理；**并在工具调用层拦掉绕过代理的命令** |
+
+`force_proxy` 的实现细节值得说清楚，因为它决定你的真实出口 IP 会不会泄漏：
+
+- 抓包开启时，Agent 的 `Bash`/`shell_open` 子进程拿到的是 `HTTP_PROXY=http://127.0.0.1:8788`（本地 MITM），MITM 再把请求转发到你填的全局代理；抓包关闭时直接注入全局代理地址。`curl`、`wget`、`python-requests`，以及 Go 写的 `subfinder`/`httpx`/`nuclei`/`katana`/`ffuf`/`gau` 都会读这些环境变量，因此**自动走代理**。
+- `nmap`/`masscan`/`zmap`/`hydra`/`nc`/`dig`/`whois`/`ping`/`smbclient`/`redis-cli` 这类工具**自己开 socket，不读任何代理环境变量**，注入再多也是直连——这正是「配了代理但流量还是从本机 IP 出去」的原因。
+- 所以 `force_proxy` 下这些命令会被**直接拦下**（返回「平台管控」提示并说明原因），除非命令自己显式带了代理参数：`nmap --proxies socks4://…`、`curl -x …`、`proxychains …`、或前缀 `HTTPS_PROXY=…`。
+
+> 需要跑端口扫描又必须全程走代理时，用 `nmap --proxies socks4://<代理>`；没有 SOCKS 能力的工具就换等效的 HTTP 层做法（`httpx`/`nuclei` 等），否则只能临时切到 `proxy_fallback` 并接受真实 IP 暴露。
+
 ---
 
 
