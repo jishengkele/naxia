@@ -15,8 +15,8 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/Autumn-27/artex/config"
-	pgdb "github.com/Autumn-27/artex/db"
+	"github.com/jishengkele/naxia/config"
+	pgdb "github.com/jishengkele/naxia/db"
 	"github.com/klauspost/compress/zstd"
 )
 

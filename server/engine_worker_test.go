@@ -4,7 +4,7 @@ import (
 	"fmt"
 	"testing"
 
-	"github.com/Autumn-27/artex/db"
+	"github.com/jishengkele/naxia/db"
 )
 
 func TestWorkerCountForTaskUsesOverrideOrGlobalDefault(t *testing.T) {

@@ -206,6 +206,8 @@ jobs:
 
   # GITHUB_TOKEN 发布的 Release 不会再次触发 release: published 工作流。
   # 直接依赖发布 job，保证 ZIP、校验文件和镜像全部发布成功后才更新 Demo。
+  # 未配置 VERCEL_ORG_ID / VERCEL_PROJECT_ID（或缺少 VERCEL_TOKEN）时，本 job 被整段跳过、
+  # 在 Actions 里显示为 skipped —— 这是预期行为，不代表发布失败；补齐配置后自动生效。
   demo:
     needs: [prepare, release]
     if: ${{ vars.VERCEL_PROJECT_ID != '' && vars.VERCEL_ORG_ID != '' }}

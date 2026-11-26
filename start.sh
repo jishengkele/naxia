@@ -1,5 +1,5 @@
 #!/bin/sh
-# ARTEX 守护启动脚本（Linux / macOS / Docker ENTRYPOINT）
+# NAXIA 守护启动脚本（Linux / macOS / Docker ENTRYPOINT）
 #
 # 用法：
 #   ./start.sh                       前台运行（Ctrl-C 停止）

@@ -13,10 +13,10 @@ import (
 	"time"
 	"unicode/utf8"
 
-	"github.com/Autumn-27/artex/agent"
-	"github.com/Autumn-27/artex/db"
-	"github.com/Autumn-27/artex/intercept"
-	"github.com/Autumn-27/artex/sidequestion"
+	"github.com/jishengkele/naxia/agent"
+	"github.com/jishengkele/naxia/db"
+	"github.com/jishengkele/naxia/intercept"
+	"github.com/jishengkele/naxia/sidequestion"
 	"github.com/Autumn-27/norma/llm"
 )
 

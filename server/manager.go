@@ -15,13 +15,13 @@ import (
 	"sync"
 	"time"
 
-	"github.com/Autumn-27/artex/agent"
-	pgdb "github.com/Autumn-27/artex/db"
-	"github.com/Autumn-27/artex/enrich"
-	"github.com/Autumn-27/artex/guard"
-	"github.com/Autumn-27/artex/intercept"
-	"github.com/Autumn-27/artex/taskproc"
-	"github.com/Autumn-27/artex/traffic"
+	"github.com/jishengkele/naxia/agent"
+	pgdb "github.com/jishengkele/naxia/db"
+	"github.com/jishengkele/naxia/enrich"
+	"github.com/jishengkele/naxia/guard"
+	"github.com/jishengkele/naxia/intercept"
+	"github.com/jishengkele/naxia/taskproc"
+	"github.com/jishengkele/naxia/traffic"
 	actool "github.com/Autumn-27/norma/tool"
 )
 

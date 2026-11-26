@@ -4,9 +4,9 @@ import (
 	"log"
 	"time"
 
-	"github.com/Autumn-27/artex/agent"
-	"github.com/Autumn-27/artex/db"
-	"github.com/Autumn-27/artex/llmpool"
+	"github.com/jishengkele/naxia/agent"
+	"github.com/jishengkele/naxia/db"
+	"github.com/jishengkele/naxia/llmpool"
 	"github.com/Autumn-27/norma/llm"
 )
 

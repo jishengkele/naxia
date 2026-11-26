@@ -4,7 +4,7 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/Autumn-27/artex/db"
+	"github.com/jishengkele/naxia/db"
 )
 
 type findingCaseExportPlan struct {

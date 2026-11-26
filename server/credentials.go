@@ -12,10 +12,10 @@ import (
 	"strings"
 	"time"
 
-	"github.com/Autumn-27/artex/agent"
-	"github.com/Autumn-27/artex/db"
-	"github.com/Autumn-27/artex/llmrec"
-	"github.com/Autumn-27/artex/traffic"
+	"github.com/jishengkele/naxia/agent"
+	"github.com/jishengkele/naxia/db"
+	"github.com/jishengkele/naxia/llmrec"
+	"github.com/jishengkele/naxia/traffic"
 	"github.com/Autumn-27/norma/transcript"
 )
 

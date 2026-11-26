@@ -5,8 +5,8 @@ import (
 	"encoding/json"
 	"testing"
 
-	"github.com/Autumn-27/artex/agent"
-	"github.com/Autumn-27/artex/db"
+	"github.com/jishengkele/naxia/agent"
+	"github.com/jishengkele/naxia/db"
 	actool "github.com/Autumn-27/norma/tool"
 )
 

@@ -1,15 +1,17 @@
 <div align="center">
 
-# ARTEX
+# NAXIA
 
 AI 自主渗透测试系统（Go 后端 + Next.js 前端）
 
 
-🌐 **上游在线 Demo**： [https://artex-demo-ruoji6.vercel.app/](https://artex-demo-ruoji6.vercel.app/)
+🌐 **在线 Demo**：本仓库尚未部署公开演示站（`DEMO_URL` 待配置，配置方式见下文「部署自己的在线 Demo」）。只想看界面时，可直接用 Mock 模式本地预览，见[本地运行与测试](#本地运行与测试)。
 
 </div>
 
-本仓库为独立维护的 [jishengkele/naxia](https://github.com/jishengkele/naxia)，基于 [RuoJi6/ARTEX](https://github.com/RuoJi6/ARTEX) 与 [Autumn-27/ARTEX](https://github.com/Autumn-27/ARTEX)，保留原有来源说明和 AGPL-3.0 许可证。程序发布包及页面在线更新使用本仓库 Releases；程序名称和发布包前缀继续使用 `artex`。本项目容器镜像发布到 GitHub Container Registry：`ghcr.io/jishengkele/naxia`。
+本项目是**独立维护的自主渗透测试系统**（工程内部名 `artex`）：源码、发布包（Releases）、容器镜像与页面在线更新全部由本仓库自身提供，不依赖也不跟随任何其他仓库。早期代码源自 ARTEX 开源版本，现在由本仓库独立演进，继续按 [AGPL-3.0](LICENSE) 分发。程序内部标识沿用 `artex`（二进制名、发布包前缀、镜像标签），以保证既有部署与在线更新链不断档。本项目容器镜像发布到 GitHub Container Registry：`ghcr.io/jishengkele/naxia`。
+
+Go 模块路径为 `github.com/jishengkele/naxia`（历史代码曾使用其他路径，已全部迁移）。第三方依赖 `github.com/Autumn-27/norma` 是独立的 agent SDK，与本项目的维护关系无关。
 
 本仓库正式版本从 **v1.0.0** 开始。推送代码自动运行 CI，通过后由维护者手动构建发布；发布流程自动递增版本，并将同一版本写入程序、Docker 镜像标签和 GitHub Release。详见[维护者发布流程](#维护者通过-github-actions-发布在线更新)。
 
@@ -17,7 +19,7 @@ AI 自主渗透测试系统（Go 后端 + Next.js 前端）
 
 ## 截图预览
 
-> 完整交互见[上游在线 Demo](https://artex-demo-ruoji6.vercel.app/)。
+> 完整交互可看下列截图；需要实际操作界面时用 Mock 模式本地预览（见[本地运行与测试](#本地运行与测试)）。
 
 | 仪表盘（总览 / Token 消耗 / 活动流） | 任务列表 |
 | :---: | :---: |
@@ -53,7 +55,7 @@ AI 自主渗透测试系统（Go 后端 + Next.js 前端）
 ## 审批记录详情
 
 全局「审批记录」、任务内「拦截审批」及对话中的审批卡片均支持展开查看详情。展示结构参考
-[AegisHook 的审批详情组件](https://github.com/RuoJi6/AegisHook/blob/main/web/src/components/CallDetail.vue)，沿用 ARTEX 的组件和主题：
+[AegisHook 的审批详情组件](https://github.com/RuoJi6/AegisHook/blob/main/web/src/components/CallDetail.vue)，沿用 NAXIA 的组件和主题：
 
 
 ## 资产同步（ScopeSentry）
@@ -62,11 +64,13 @@ AI 自主渗透测试系统（Go 后端 + Next.js 前端）
 
 - 在「**资产同步**」页填 ScopeSentry 的地址与 API Key，接入数据源；
 - 按**项目**或**任务**维度选择要同步的目标与资产类型（域名 / 子域 / IP / 端口 / 站点 / 端点…）；
-- 一键导入并按公司资产范围归并，直接进入 ARTEX 的资产图供 agent 探索使用。
+- 一键导入并按公司资产范围归并，直接进入 NAXIA 的资产图供 agent 探索使用。
 
 ---
 
 ## 部署自己的在线 Demo（随正式 Release 自动更新）
+
+本仓库目前**没有部署公开 Demo**：`deploy-demo` 工作流在缺 `VERCEL_PROJECT_ID` / `VERCEL_ORG_ID` / `VERCEL_TOKEN` 时会整段跳过（Release 里能看到 `demo` job 为 skipped）。按下面步骤一次性配置后，每次正式发布都会自动更新你的演示站。
 
 Demo 只运行 `web/` 前端，构建时启用 `NEXT_PUBLIC_MOCK=1`，不需要 Go、PostgreSQL 或模型密钥。界面使用模拟数据，不执行真实扫描。
 
@@ -74,7 +78,7 @@ Demo 只运行 `web/` 前端，构建时启用 `NEXT_PUBLIC_MOCK=1`，不需要 
 
 ### 首次配置 Vercel
 
-1. 在自己的 Vercel 账号创建空项目，设置名称（例如 `artex-demo-ruoji6`）。保持 **Git 未连接**，避免每次提交都自动部署。`web/vercel.json` 也禁用了 Git 自动部署。
+1. 在自己的 Vercel 账号创建空项目，设置名称（例如 `naxia-demo`）。保持 **Git 未连接**，避免每次提交都自动部署。`web/vercel.json` 也禁用了 Git 自动部署。
 2. 在 **Settings → Build and Deployment** 中选择 **Next.js**、Node.js **22.x**，安装命令可覆盖为 `npm ci`，构建命令为 `npm run build`，Output Directory 保持默认。**Root Directory 留空**：此工作流从检出的 `web/` 目录调用 Vercel CLI，不能再填一层 `web`。
 3. 在项目的 **Environment Variables** 中添加 `NEXT_PUBLIC_MOCK=1`，至少应用于 **Production**。不要设置 `NEXT_EXPORT=1`，也不要填写数据库连接或模型密钥。
 4. 在项目 **Settings → General** 复制 **Project ID**；在团队 **Settings → General** 复制 **Team ID**（对应 `VERCEL_ORG_ID`）。确认 **Domains** 中有准备使用的生产域名。
@@ -86,7 +90,7 @@ Demo 只运行 `web/` 前端，构建时启用 `NEXT_PUBLIC_MOCK=1`，不需要 
 | --- | --- |
 | `VERCEL_ORG_ID` | Vercel Team ID |
 | `VERCEL_PROJECT_ID` | Vercel Project ID |
-| `DEMO_URL` | 固定公开生产网址，含 `https://`，例如 `https://artex-demo-ruoji6.vercel.app` |
+| `DEMO_URL` | 固定公开生产网址，含 `https://`，例如 `https://naxia-demo.vercel.app` |
 
 ### 首次部署与重试
 
@@ -94,7 +98,7 @@ Demo 只运行 `web/` 前端，构建时启用 `NEXT_PUBLIC_MOCK=1`，不需要 
 
 工作流会将这个专用 Demo 项目的框架设为 Next.js、Node 设为 22.x、根目录设为空、安装命令设为 `npm ci`、构建命令设为 `npm run build`，并确保 Production 环境的 `NEXT_PUBLIC_MOCK=1`，随后绑定 `DEMO_URL` 指定的域名。请使用独立项目；后续部署会继续维护这些配置。
 
-成功后访问生产域名，并检查 `/demo-version.json` 中的 `tag`、`commit` 和 `mock: true`。确认可访问后，将 README 顶部和截图区域的旧 Demo 链接一起改为自己的生产域名。
+成功后访问生产域名，并检查 `/demo-version.json` 中的 `tag`、`commit` 和 `mock: true`。确认可访问后，把上表 `DEMO_URL` 与 README 顶部的在线 Demo 链接一并更新为你的生产域名。
 
 此后按正常流程发布更高版本即可自动更新 Demo。若 Demo 部署失败，已发布的程序包和镜像仍然有效，旧 Demo 通常继续提供服务；修复设置后单独重跑 `deploy-demo`，不必重新发布整个 Release。两个版本同时发布时，部署串行执行，并在构建前、上线前检查 latest，避免已过期的构建覆盖新版。
 
@@ -192,7 +196,7 @@ ARTEX_TARGETS=linux/amd64,windows/amd64 ./build.sh --release
 
 在 **系统配置** 页（侧边栏「系统配置」→ `/system/settings`）的**版本与更新**卡片里，可以直接检查并安装新版本，无需登录服务器。
 
-本仓库构建的程序固定从 `jishengkele/naxia` 的最新正式 GitHub Release 检查更新，跳过草稿和预发布版本。已安装的上游程序仍使用其编译时的更新源，因此首次切换必须手动安装本仓库构建的程序；以后发布更高的三段式版本即可通过页面升级。仅推送 main 或 Git 标签但未发布 Release，不会产生可在线安装的新版本。
+本仓库构建的程序固定从 `jishengkele/naxia` 的最新正式 GitHub Release 检查更新，跳过草稿和预发布版本。从其他分发（含早期 ARTEX 构建）迁移过来的程序仍使用其编译时的更新源，因此首次切换必须手动安装本仓库构建的程序；以后发布更高的三段式版本即可通过页面升级。仅推送 main 或 Git 标签但未发布 Release，不会产生可在线安装的新版本。
 
 独立程序点「更新」后：下载当前平台的发布包 → 比对 Release 的 `SHA256SUMS` → 用 `-h` 冒烟测试新二进制 → 暂存为 `artex.new` → 程序退出，由 `start.sh` / `start.bat` 重新拉起并完成换装。页面会自动等到新版本上线后刷新。
 
@@ -206,7 +210,7 @@ Docker 模式点「立即更新」会通过宿主机更新服务完成**整个�
 - **开发构建不给更新**：版本号是 `dev` 或 `git describe` 带后缀时禁用，避免正式版覆盖掉本地调试的二进制。
 - **Docker 完整升级**：按下面的一次性接入说明启用宿主机服务。面板版本代表程序版本，只有宿主机验收完成才代表镜像升级完成；新版工具链会随镜像更新。任务会中断，升级期间请勿操作应用数据，失败回退会恢复升级前的数据库和文件快照。
 - **更新代理（可选）**与其他代理设置使用相同的「地址输入框 + 保存」方式。填写独立更新代理后保存，例如 `http://127.0.0.1:7897`；支持 `http://`、`https://`、`socks5://`、`socks5h://` 及用户名密码认证。清空并保存即为直连，不受全局代理或 `HTTP_PROXY` / `HTTPS_PROXY` 环境变量影响。保存后自动重新检查，检查版本、校验和下载和发布包下载使用同一个出口。更新只从 GitHub 域名下载并强制 HTTPS。
-- 代理地址由 **ARTEX 服务端**访问。Docker 内的 `127.0.0.1` 指容器自身；代理运行在宿主机时，应使用容器可达地址（Docker Desktop 通常为 `http://host.docker.internal:7897`），并允许容器访问代理端口。
+- 代理地址由 **NAXIA 服务端**访问。Docker 内的 `127.0.0.1` 指容器自身；代理运行在宿主机时，应使用容器可达地址（Docker Desktop 通常为 `http://host.docker.internal:7897`），并允许容器访问代理端口。
 
 #### Docker 面板完整升级：一次性接入
 
@@ -273,7 +277,7 @@ systemctl start naxia-updater
 2. 该提交的 CI 全部通过后，打开 [Actions → release](https://github.com/jishengkele/naxia/actions/workflows/release.yml)，点击 **Run workflow**，分支选择 **main**。不需要输入版本或手工创建标签。流程要求所选提交仍为最新 main，并且同一提交最新一轮 CI 已成功；条件不满足时停止，不分配版本。
 3. 流程自动分配下一个版本并固定该提交，导出前端、构建五个平台的 ZIP 与 `SHA256SUMS`，构建和验证 Docker 镜像，最后公开 GitHub Release。镜像地址为 `ghcr.io/jishengkele/naxia:v1.0.0` 等正式标签，并更新 `latest`。
 
-自动版本规则：首次 **v1.0.0**，下一次 **v1.0.1**；修订号和次版本使用 0–99，`v1.0.99 → v1.1.0`，`v1.99.99 → v2.0.0`。以仓库中已分配的正式版本标签为准，上游 `v0.x` 和预发布标签不参与计算。推送源码本身不会增加版本。程序界面显示的版本由构建时注入的发布标签决定，无需为每次构建另改源码中的版本。
+自动版本规则：首次 **v1.0.0**，下一次 **v1.0.1**；修订号和次版本使用 0–99，`v1.0.99 → v1.1.0`，`v1.99.99 → v2.0.0`。以仓库中已分配的正式版本标签为准，历史 `v0.x` 标签和预发布标签不参与计算。推送源码本身不会增加版本。程序界面显示的版本由构建时注入的发布标签决定，无需为每次构建另改源码中的版本。
 
 发布串行执行，分配标签时不覆盖已有标签。**版本分配后即被占用**：后续构建失败也保留标签，因此可能跳号。使用 **Re-run failed jobs** 续跑同一版本；重新点击 **Run workflow** 或 **Re-run all jobs** 会重新分配下一个版本。已经公开的版本拒绝原地覆盖，请新发起发布生成更高版本；不要删除或移动旧标签来复用版本。并发提交多个发布请求时，GitHub 可能替换尚在排队的请求，建议等当前发布结束后再发起下一次。
 
@@ -300,7 +304,7 @@ git push origin main
 
 ### 已有 Docker 部署迁移到本仓库程序或自有镜像
 
-在原部署目录中备份 `.env`、Compose 文件、`data/` 和 PostgreSQL 数据，保留原数据库卷和 skills 挂载。将 `.env` 的 `ARTEX_IMAGE` 设置为本仓库镜像地址、`ARTEX_TAG` 设置为目标版本；如果旧 Compose 仍写死原作者的镜像，可创建下列覆盖文件（已有覆盖文件时应合并 image 配置）：
+在原部署目录中备份 `.env`、Compose 文件、`data/` 和 PostgreSQL 数据，保留原数据库卷和 skills 挂载。将 `.env` 的 `ARTEX_IMAGE` 设置为本仓库镜像地址、`ARTEX_TAG` 设置为目标版本；如果旧 Compose 仍写死其他镜像地址，可创建下列覆盖文件（已有覆盖文件时应合并 image 配置）：
 
 ```yaml
 # docker-compose.override.yml
@@ -406,13 +410,13 @@ CGO_ENABLED=0 go build -tags embedui -o artex ./cmd/artex
 
 在 **系统配置 → HTTP Basic Auth** 中填写独立的验证用户名和密码，打开「启用访问验证」并点击「保存访问验证」。默认关闭，保存后立即生效，无需重启；密码至少 8 位、最多 72 字节，用户名不能包含冒号。
 
-开启后，访客先完成浏览器原生账号密码验证，再进入原有 ARTEX 登录页。网页、静态资源和 API 均受保护，`/api/health` 健康检查保留公开访问；通过访问验证仍需登录 ARTEX 才能使用业务 API。公网部署请通过 HTTPS 访问。
+开启后，访客先完成浏览器原生账号密码验证，再进入原有 NAXIA 登录页。网页、静态资源和 API 均受保护，`/api/health` 健康检查保留公开访问；通过访问验证仍需登录 NAXIA 才能使用业务 API。公网部署请通过 HTTPS 访问。
 
 配置持久化到数据库，密码仅保存 bcrypt 哈希，界面不会回显。保存时密码留空表示不修改；关闭后保留凭据，方便再次开启。独立的 HttpOnly 验证 Cookie 有效期为 12 小时，兼容现有 JWT 和 SSE；保存配置会使其他浏览器的旧验证 Cookie 失效，当前管理员浏览器保持访问。浏览器可能缓存 Basic Auth 凭据，可用新的无痕窗口检查验证弹窗。
 
 Docker 和内嵌前端二进制直接支持此功能。`next dev` 的认证检查仅向本机回环后端转发凭据（`localhost`、`127.0.0.1` 或 `::1`）；前端与后端应使用同一主机名。远程开发后端未开启验证时仍可使用；开启后请通过内嵌前端访问远程服务，避免跨域验证 Cookie 问题。
 
-若遗忘独立验证密码，可在服务器连接应用数据库后执行以下语句并重启 ARTEX，关闭这层访问验证，再用原有 ARTEX 账号登录后重新配置：
+若遗忘独立验证密码，可在服务器连接应用数据库后执行以下语句并重启 NAXIA，关闭这层访问验证，再用原有 NAXIA 账号登录后重新配置：
 
 ```sql
 UPDATE settings
@@ -491,7 +495,7 @@ server {
 
 ## 系统技术架构
 
-ARTEX 是一套 **LLM 多 agent 驱动的自主渗透系统**：Go 单体后端（内嵌 Next.js 前端）+ PostgreSQL，agent 能力由 [`norma`](https://github.com/Autumn-27/norma) SDK 提供（`agentcore` / `tool` / `permission` / `harness` / `memory` / `transcript`）。核心是**双图架构**，以及围绕它的两条自主性机制：**worker 间过程级信息交换**与 **planner 多轮共享 todolist 稳定攻击链路**。
+NAXIA 是一套 **LLM 多 agent 驱动的自主渗透系统**：Go 单体后端（内嵌 Next.js 前端）+ PostgreSQL，agent 能力由 [`norma`](https://github.com/Autumn-27/norma) SDK 提供（`agentcore` / `tool` / `permission` / `harness` / `memory` / `transcript`）。核心是**双图架构**，以及围绕它的两条自主性机制：**worker 间过程级信息交换**与 **planner 多轮共享 todolist 稳定攻击链路**。
 
 ### 总体分层
 
@@ -655,7 +659,7 @@ flowchart TB
   R3["第 3 轮（②产出 fact）　派意图③"] --> T3
 ```
 
-于是攻击链在“事件驱动 + 无状态会话”的环境下依然**稳定推进、不重复、不错序**——这是 ARTEX 能自主走完多步利用链的关键。
+于是攻击链在“事件驱动 + 无状态会话”的环境下依然**稳定推进、不重复、不错序**——这是 NAXIA 能自主走完多步利用链的关键。
 
 ---
 
@@ -685,7 +689,7 @@ https://github.com/oritera/Cairn
 
 > ⚠️ **重要提示**：开源协议本身不限制软件的使用用途。以下的「使用限制」与「免责声明」是作者对使用者的额外约定与郑重声明，请务必遵守。
 
-**ARTEX 仅供个人学习、代码研究与本地技术验证使用，不得用于对任何线上系统或网站发起实际测试。**
+**NAXIA 仅供个人学习、代码研究与本地技术验证使用，不得用于对任何线上系统或网站发起实际测试。**
 
 ### 允许使用范围
 

@@ -8,7 +8,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/Autumn-27/artex/db"
+	"github.com/jishengkele/naxia/db"
 )
 
 // Hold channel registration behind the committed pending row so an HTTP/polling

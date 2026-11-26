@@ -13,8 +13,8 @@ import (
 	"syscall"
 	"testing"
 
-	"github.com/Autumn-27/artex/db"
-	"github.com/Autumn-27/artex/traffic"
+	"github.com/jishengkele/naxia/db"
+	"github.com/jishengkele/naxia/traffic"
 )
 
 func TestDirectoryArchiveEstimateUsesLatestFreeSpace(t *testing.T) {

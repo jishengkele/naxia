@@ -273,7 +273,7 @@ func TestBasicAuthGate(t *testing.T) {
 			if w.Code != tc.want {
 				t.Fatalf("status=%d want %d: %s", w.Code, tc.want, w.Body.String())
 			}
-			if w.Code == 401 && w.Header().Get("WWW-Authenticate") != `Basic realm="ARTEX", charset="UTF-8"` {
+			if w.Code == 401 && w.Header().Get("WWW-Authenticate") != `Basic realm="NAXIA", charset="UTF-8"` {
 				t.Fatal("missing browser challenge")
 			}
 		})
@@ -471,7 +471,7 @@ func TestBasicAuthPostgresLoginFlow(t *testing.T) {
 	if err := restarted.basicAuth.load(m.pg); err != nil {
 		t.Fatal(err)
 	}
-	loginBody := `{"username":"ARTEX","password":"admin-password"}`
+	loginBody := `{"username":"NAXIA","password":"admin-password"}`
 	r = httptest.NewRequest("POST", "/api/auth/login", strings.NewReader(loginBody))
 	w = httptest.NewRecorder()
 	restarted.Handler().ServeHTTP(w, r)

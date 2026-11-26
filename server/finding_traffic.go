@@ -13,9 +13,9 @@ import (
 	"strconv"
 	"unicode/utf8"
 
-	"github.com/Autumn-27/artex/agent"
-	"github.com/Autumn-27/artex/db"
-	"github.com/Autumn-27/artex/evidence"
+	"github.com/jishengkele/naxia/agent"
+	"github.com/jishengkele/naxia/db"
+	"github.com/jishengkele/naxia/evidence"
 	actool "github.com/Autumn-27/norma/tool"
 )
 

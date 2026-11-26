@@ -11,7 +11,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/Autumn-27/artex/db"
+	"github.com/jishengkele/naxia/db"
 )
 
 func directoryArchiveFixture(t *testing.T) (*Server, *Task, int64) {

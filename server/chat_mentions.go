@@ -10,7 +10,7 @@ import (
 	"strings"
 	"unicode/utf8"
 
-	"github.com/Autumn-27/artex/db"
+	"github.com/jishengkele/naxia/db"
 )
 
 const maxChatMentions = 10

@@ -1,4 +1,4 @@
-module github.com/Autumn-27/artex
+module github.com/jishengkele/naxia
 
 go 1.26.10
 

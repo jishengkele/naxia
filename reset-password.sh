@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
 # =============================================================================
-# ARTEX 管理员密码重置脚本
+# NAXIA 管理员密码重置脚本
 #
-# 登录用户名固定为 ARTEX；密码以 bcrypt 哈希存放在数据库 settings 表的
+# 登录用户名固定为 NAXIA；密码以 bcrypt 哈希存放在数据库 settings 表的
 # auth.password_hash 键。本脚本连上数据库后，用 pgcrypto 在库内生成 bcrypt 哈希
 # 并写回该键——与后端登录校验（golang.org/x/crypto/bcrypt）完全兼容。
 #
@@ -124,7 +124,7 @@ info "部署模式：$MODE"
 
 # ---- 采集新密码 -----------------------------------------------------------
 if [[ -z "$NEWPASS" ]]; then
-  read -r -s -p "输入新密码（用户名固定为 ARTEX）：" NEWPASS; echo >&2
+  read -r -s -p "输入新密码（用户名固定为 NAXIA）：" NEWPASS; echo >&2
   [[ -n "$NEWPASS" ]] || die "密码不能为空"
   read -r -s -p "再次输入以确认：" NEWPASS2; echo >&2
   [[ "$NEWPASS" == "$NEWPASS2" ]] || die "两次输入不一致"
@@ -178,7 +178,7 @@ if [[ "$MODE" == "local" ]]; then
 
   info "目标数据库：$target"
   if [[ "$ASSUME_YES" -ne 1 ]]; then
-    read -r -p "确认在该库重置 ARTEX 密码？[y/N] " ans
+    read -r -p "确认在该库重置 NAXIA 密码？[y/N] " ans
     [[ "$ans" == "y" || "$ans" == "Y" ]] || die "已取消"
   fi
 
@@ -212,7 +212,7 @@ else
 
   info "目标：容器 $CONTAINER 内 psql -U $DUSER -d $DNAME（exec=$EXEC_KIND）"
   if [[ "$ASSUME_YES" -ne 1 ]]; then
-    read -r -p "确认在该容器数据库重置 ARTEX 密码？[y/N] " ans
+    read -r -p "确认在该容器数据库重置 NAXIA 密码？[y/N] " ans
     [[ "$ans" == "y" || "$ans" == "Y" ]] || die "已取消"
   fi
 
@@ -232,4 +232,4 @@ else
 fi
 
 unset ARTEX_RESET_NEWPASS
-echo "✓ 已重置 ARTEX 管理员密码。请用用户名 ARTEX + 新密码登录（无需重启服务）。"
+echo "✓ 已重置 NAXIA 管理员密码。请用用户名 NAXIA + 新密码登录（无需重启服务）。"

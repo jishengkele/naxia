@@ -19,14 +19,14 @@ import (
 	"sync"
 	"time"
 
-	"github.com/Autumn-27/artex/agent"
-	"github.com/Autumn-27/artex/db"
-	"github.com/Autumn-27/artex/intercept"
-	"github.com/Autumn-27/artex/llmpool"
-	"github.com/Autumn-27/artex/llmrec"
-	"github.com/Autumn-27/artex/report"
-	"github.com/Autumn-27/artex/taskproc"
-	"github.com/Autumn-27/artex/traffic"
+	"github.com/jishengkele/naxia/agent"
+	"github.com/jishengkele/naxia/db"
+	"github.com/jishengkele/naxia/intercept"
+	"github.com/jishengkele/naxia/llmpool"
+	"github.com/jishengkele/naxia/llmrec"
+	"github.com/jishengkele/naxia/report"
+	"github.com/jishengkele/naxia/taskproc"
+	"github.com/jishengkele/naxia/traffic"
 	"github.com/Autumn-27/norma/llm"
 	actool "github.com/Autumn-27/norma/tool"
 	"github.com/Autumn-27/norma/transcript"
@@ -37,7 +37,7 @@ import (
 // Defaults to "dev" for local builds. Exposed to the frontend via GET /api/health.
 var BuildVersion = "dev"
 
-// Server exposes the ARTEX backend over a JSON HTTP API for the shadcn/ui
+// Server exposes the NAXIA backend over a JSON HTTP API for the shadcn/ui
 // frontend.
 type Server struct {
 	scheduleMu sync.Mutex

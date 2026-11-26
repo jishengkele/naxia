@@ -1,4 +1,4 @@
-# ARTEX 腾讯 TSec Benchmark 测评镜像 —— 本地一键 build + run。
+# NAXIA 腾讯 TSec Benchmark 测评镜像 —— 本地一键 build + run。
 # 与生产用的 docker-compose.yml(多服务:artex+postgres)互不影响。
 # 用法：
 #   cp bench/.env.example bench/.env   # 填 LLM_API_KEY / BENCHMARK_TOKEN 等

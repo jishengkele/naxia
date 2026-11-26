@@ -662,7 +662,7 @@ export default function SystemSettingsPage() {
                             {c.result.exit_ip}
                           </span>{" "}
                           ·{" "}
-                          <span title="从 ARTEX 发出请求到拿到响应的完整往返耗时；经代理时包含代理那一跳">
+                          <span title="从 NAXIA 发出请求到拿到响应的完整往返耗时；经代理时包含代理那一跳">
                             {c.result.latency_ms}ms
                           </span>
                           {c.result.via && c.result.via !== "direct" && !viaCapture && (
