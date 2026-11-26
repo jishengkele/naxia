@@ -135,7 +135,7 @@ docker compose up -d          # 拉取 ghcr.io/jishengkele/naxia 镜像 + postgr
 # → http://localhost:8787
 ```
 
-镜像已含常用工具（ripgrep/curl/vim/npm/nmap…）；`./skills` 与 `./data` 以绑定挂载持久化。
+镜像已含常用工具（ripgrep/curl/vim/npm/nmap…）与一套**开箱即用的侦察工具链**：`subfinder` / `httpx` / `nuclei`（含 1.4 万模板）/ `katana` / `ffuf` / `gau` / `sqlmap` / `whatweb` / `hydra`，外加 SecLists 精简字典（`/usr/share/seclists`，`/usr/share/wordlists` 指向它）与 Python 库（requests/httpx/bs4/lxml/pyyaml/dnspython）。任务模板里写到的命令可以直接跑。`./skills` 与 `./data` 以绑定挂载持久化。
 
 `.env` 中默认 `ARTEX_IMAGE=ghcr.io/jishengkele/naxia`，`ARTEX_TAG=latest` 使用最新镜像，也可固定为已发布的正式版本标签，例如 `ghcr.io/jishengkele/naxia:v1.0.0`。工作流构建 `linux/amd64` 和 `linux/arm64` 镜像，Docker 会自动选择与宿主机匹配的架构。初次部署请修改 `POSTGRES_PASSWORD`。
 
